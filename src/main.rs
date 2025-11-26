@@ -1,5 +1,4 @@
-mod analyzer;
-
+use php_checker::analyzer;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};

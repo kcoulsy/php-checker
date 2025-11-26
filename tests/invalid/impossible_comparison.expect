@@ -1,0 +1,2 @@
+error: comparison "$flag === 5" is always false due to type difference
+

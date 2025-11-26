@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::Result;
+use tree_sitter::Point;
 use walkdir::WalkDir;
 
 /// Represents the severity of a diagnostic.
@@ -30,31 +31,128 @@ impl fmt::Display for Severity {
 
 /// A diagnostic that can be emitted during analysis.
 #[derive(Debug, Clone)]
+pub struct Span {
+    pub start: Point,
+    pub end: Point,
+}
+
+#[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub file: PathBuf,
     pub severity: Severity,
     pub message: String,
+    pub span: Option<Span>,
+    pub snippet_before: Option<String>,
+    pub snippet_line: Option<String>,
+    pub snippet_after: Option<String>,
+    pub caret_col: Option<usize>,
+    pub caret_len: usize,
 }
 
 impl Diagnostic {
+    #[allow(dead_code)]
     pub fn new(file: PathBuf, severity: Severity, message: impl Into<String>) -> Self {
         Self {
             file,
             severity,
             message: message.into(),
+            span: None,
+            snippet_before: None,
+            snippet_line: None,
+            snippet_after: None,
+            caret_col: None,
+            caret_len: 1,
+        }
+    }
+
+    pub fn with_span(
+        file: PathBuf,
+        severity: Severity,
+        message: impl Into<String>,
+        span: Span,
+        snippet_before: Option<String>,
+        snippet_line: Option<String>,
+        snippet_after: Option<String>,
+        caret_col: Option<usize>,
+        caret_len: usize,
+    ) -> Self {
+        Self {
+            file,
+            severity,
+            message: message.into(),
+            span: Some(span),
+            snippet_before,
+            snippet_line,
+            snippet_after,
+            caret_col,
+            caret_len: caret_len.max(1),
         }
     }
 }
 
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
+        const RESET: &str = "\x1b[0m";
+        const DIM: &str = "\x1b[2m";
+        const BOLD_RED: &str = "\x1b[1;31m";
+        const GREEN: &str = "\x1b[32m";
+
+        writeln!(
             f,
-            "[{}] {}: {}",
-            self.severity,
-            self.file.display(),
-            self.message
-        )
+            "{}{}{}: {}",
+            BOLD_RED, self.severity, RESET, self.message
+        )?;
+
+        if let Some(span) = &self.span {
+            writeln!(
+                f,
+                " --> {}:{}:{}",
+                self.file.display(),
+                span.start.row + 1,
+                span.start.column + 1
+            )?;
+            writeln!(f, "  |")?;
+
+            if let Some(line_before) = &self.snippet_before {
+                writeln!(f, "{:>3} | {}{}{}", span.start.row, DIM, line_before, RESET)?;
+            }
+
+            if let Some(line) = &self.snippet_line {
+                writeln!(
+                    f,
+                    "{:>3} | {}{}{}",
+                    span.start.row + 1,
+                    BOLD_RED,
+                    line,
+                    RESET
+                )?;
+
+                let caret_col = self.caret_col.unwrap_or(0);
+                writeln!(
+                    f,
+                    "  | {}{}{}{}",
+                    " ".repeat(caret_col),
+                    GREEN,
+                    "^".repeat(self.caret_len),
+                    RESET
+                )?;
+            }
+
+            if let Some(line_after) = &self.snippet_after {
+                writeln!(
+                    f,
+                    "{:>3} | {}{}{}",
+                    span.start.row + 2,
+                    DIM,
+                    line_after,
+                    RESET
+                )?;
+            }
+        } else {
+            writeln!(f, " --> {}", self.file.display())?;
+        }
+
+        Ok(())
     }
 }
 
@@ -70,8 +168,13 @@ impl Analyzer {
         let rules: Vec<Box<dyn rules::DiagnosticRule>> = vec![
             Box::new(rules::UndefinedVariableRule::new()),
             Box::new(rules::MissingReturnRule::new()),
+            Box::new(rules::MissingArgumentRule::new()),
             Box::new(rules::TypeMismatchRule::new()),
+            Box::new(rules::DuplicateDeclarationRule::new()),
+            Box::new(rules::ImpossibleComparisonRule::new()),
+            Box::new(rules::RedundantConditionRule::new()),
             Box::new(rules::UnreachableCodeRule::new()),
+            Box::new(rules::UnusedVariableRule::new()),
         ];
 
         Ok(Self { parser, rules })

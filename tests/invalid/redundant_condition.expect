@@ -1,0 +1,2 @@
+error: redundant condition "$value > 5" repeats an earlier guard
+
