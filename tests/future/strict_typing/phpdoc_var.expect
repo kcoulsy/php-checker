@@ -1,0 +1,20 @@
+error: type mismatch: assigning int to string property at 16:21
+error: type mismatch: assigning int to string variable at 30:14
+error: type mismatch: reassigning int to string variable at 39:13
+error: type mismatch: array elements are int, expected User[] at 55:14
+error: type mismatch: array key type is int, expected string at 70:15
+error: type mismatch: array value type is string, expected int at 70:15
+error: type mismatch: assigning string to bool property at 90:26
+error: type mismatch: assigning bool to int|string variable at 99:14
+error: type mismatch: assigning int to ?string variable at 107:17
+error: type mismatch: assigning int to string property at 122:26
+error: type mismatch: assigning string to int property at 134:27
+error: type mismatch: assigning string to int constant at 143:31
+error: type mismatch: array value at key 'guest' contains int[], expected User[] at 150:20
+error: type mismatch: assigning int[] to string[] variable at 165:16
+error: type mismatch: assigning int to string variable at 176:14
+error: type mismatch: assigning string to \DateTime property at 191:27
+error: type mismatch: array shape - 'id' expects int, got string at 202:14
+error: type mismatch: array shape - 'name' expects string, got int at 202:14
+error: type mismatch: assigning string to int variable via reference at 211:18
+error: type mismatch: assigning int to string variable at 216:17

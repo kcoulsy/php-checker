@@ -1,0 +1,5 @@
+warning: @throws \RuntimeException is documented but never thrown at 14:10
+error: throwing \RuntimeException which is not documented in @throws at 26:15
+warning: call to function that may throw \InvalidArgumentException without try-catch at 53:5
+warning: @throws in destructor is dangerous and should be avoided at 232:19
+warning: @throws should use fully qualified name \InvalidArgumentException at 253:10

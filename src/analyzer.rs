@@ -1,6 +1,8 @@
 pub mod config;
 pub mod fix;
 pub mod ignore;
+pub mod phpdoc;
+pub mod test_config;
 mod parser;
 mod project;
 mod rules;
@@ -15,6 +17,7 @@ use config::AnalyzerConfig;
 use ignore::IgnoreState;
 use rules::psr4;
 use serde::Serialize;
+use test_config::TestConfig;
 
 use anyhow::Result;
 use project::ProjectContext;
@@ -324,6 +327,8 @@ impl Analyzer {
             Box::new(rules::HardCodedCredentialsRule::new()),
             Box::new(rules::WeakHashingRule::new()),
             Box::new(rules::HardCodedKeysRule::new()),
+            Box::new(rules::PhpDocVarCheckRule::new()),
+            Box::new(rules::PhpDocParamCheckRule::new()),
         ];
 
         let config = config.unwrap_or_default();
@@ -411,9 +416,17 @@ impl Analyzer {
             return Vec::new();
         }
 
+        let test_config = TestConfig::from_source(parsed.source.as_str());
+
         let mut diagnostics = Vec::new();
         for rule in &self.rules {
             let rule_name = rule.name().to_string();
+
+            // Skip rule if test config says so
+            if test_config.is_test_file() && !test_config.should_run_rule(&rule_name) {
+                continue;
+            }
+
             let mut rule_diagnostics = rule.run(parsed, context);
             for diag in rule_diagnostics.iter_mut() {
                 diag.rule_name = Some(rule_name.clone());

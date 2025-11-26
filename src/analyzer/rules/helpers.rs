@@ -8,6 +8,7 @@ pub enum TypeHint {
     Int,
     String,
     Bool,
+    Float,
     Unknown,
 }
 

@@ -19,7 +19,7 @@ pub use control_flow::{
 pub use sanity::{ArrayKeyNotDefinedRule, DuplicateDeclarationRule, UndefinedVariableRule};
 pub use security::{HardCodedCredentialsRule, HardCodedKeysRule, IncludeUserInputRule, MutatingLiteralRule, WeakHashingRule};
 pub use strict_typing::{
-    ConsistentReturnRule, ForceReturnTypeRule, MissingArgumentRule, MissingReturnRule, StrictTypesRule, TypeMismatchRule,
+    ConsistentReturnRule, ForceReturnTypeRule, MissingArgumentRule, MissingReturnRule, PhpDocParamCheckRule, PhpDocVarCheckRule, StrictTypesRule, TypeMismatchRule,
 };
 
 pub trait DiagnosticRule {

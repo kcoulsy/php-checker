@@ -1,0 +1,10 @@
+error: @param type 'string' conflicts with native type hint 'int' for parameter $value at 13:10
+error: type mismatch: argument 1 expects string but got int at 30:15
+error: type mismatch: argument 3 of variadicStrings expects string but got int at 44:28
+error: type mismatch: argument 1 expects int|string but got bool at 59:13
+error: type mismatch: argument 1 expects string but got null at 72:22
+error: type mismatch: argument 1 expects User[] but got int[] at 79:18
+error: type mismatch: array key expects string but got int at 86:16
+error: type mismatch: array value expects int but got string at 86:16
+error: type mismatch: argument 1 expects array<int, User> but got array at 101:15
+error: type mismatch: argument 1 expects string but got \DateTime at 120:17

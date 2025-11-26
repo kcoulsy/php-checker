@@ -142,6 +142,7 @@ fn type_description(return_type: &ReturnType) -> String {
         ReturnType::Typed(TypeHint::Int) => "int".to_string(),
         ReturnType::Typed(TypeHint::String) => "string".to_string(),
         ReturnType::Typed(TypeHint::Bool) => "bool".to_string(),
+        ReturnType::Typed(TypeHint::Float) => "float".to_string(),
         ReturnType::Typed(TypeHint::Unknown) => "unknown".to_string(),
     }
 }

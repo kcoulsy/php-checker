@@ -1,0 +1,12 @@
+error: @return type 'string' conflicts with native return type 'int' at 13:10
+error: type mismatch: returning string when int expected at 23:12
+error: type mismatch: returning string when int expected at 36:12
+error: void function cannot return value at 51:12
+error: @return static expects child class instance, got parent class at 73:16
+error: @return $this expects same instance, got new instance at 95:16
+error: type mismatch: returning int[] when string[] expected at 113:12
+error: missing return statement on non-void function at 136:10
+error: type mismatch: array key type mismatch in return at 161:12
+error: type mismatch: array value type mismatch in return at 161:12
+error: type mismatch: returning \DateTimeImmutable when \DateTime expected at 177:12
+error: type mismatch: returning int when string expected at 217:12

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
@@ -20,6 +20,66 @@ fn expect_lines(path: &Path) -> Result<Vec<String>> {
         .filter(|line| !line.is_empty())
         .map(ToOwned::to_owned)
         .collect())
+}
+
+#[derive(Debug)]
+struct TestFailure {
+    file: PathBuf,
+    expected: Vec<String>,
+    actual: Vec<String>,
+}
+
+impl TestFailure {
+    fn format_diff(&self) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"));
+        output.push_str(&format!("FAILED: {}\n", self.file.display()));
+        output.push_str(&format!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"));
+
+        output.push_str("\nExpected diagnostics:\n");
+        if self.expected.is_empty() {
+            output.push_str("  (none)\n");
+        } else {
+            for (i, line) in self.expected.iter().enumerate() {
+                output.push_str(&format!("  {:2}. {}\n", i + 1, line));
+            }
+        }
+
+        output.push_str("\nActual diagnostics:\n");
+        if self.actual.is_empty() {
+            output.push_str("  (none)\n");
+        } else {
+            for (i, line) in self.actual.iter().enumerate() {
+                output.push_str(&format!("  {:2}. {}\n", i + 1, line));
+            }
+        }
+
+        output.push_str("\nDifferences:\n");
+
+        // Show missing diagnostics
+        let missing: Vec<_> = self.expected.iter()
+            .filter(|e| !self.actual.contains(e))
+            .collect();
+        if !missing.is_empty() {
+            output.push_str("  Missing (expected but not found):\n");
+            for line in missing {
+                output.push_str(&format!("    - {}\n", line));
+            }
+        }
+
+        // Show unexpected diagnostics
+        let unexpected: Vec<_> = self.actual.iter()
+            .filter(|a| !self.expected.contains(a))
+            .collect();
+        if !unexpected.is_empty() {
+            output.push_str("  Unexpected (found but not expected):\n");
+            for line in unexpected {
+                output.push_str(&format!("    + {}\n", line));
+            }
+        }
+
+        output
+    }
 }
 
 #[test]
@@ -42,6 +102,9 @@ fn invalid_fixtures_match_expectations() -> Result<()> {
         }
     }
 
+    let mut failures = Vec::new();
+    let mut passed = 0;
+
     for path in php_files {
         let expect_path = path.with_extension("expect");
         if !expect_path.exists() {
@@ -52,14 +115,33 @@ fn invalid_fixtures_match_expectations() -> Result<()> {
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             let actual = by_file.remove(name).unwrap_or_default();
 
-            assert_eq!(
-                expect,
-                actual,
-                "analysis output for {} did not match expectations",
-                path.display()
-            );
+            if expect != actual {
+                failures.push(TestFailure {
+                    file: path.clone(),
+                    expected: expect,
+                    actual,
+                });
+            } else {
+                passed += 1;
+            }
         }
     }
 
+    if !failures.is_empty() {
+        let mut error_msg = String::new();
+        error_msg.push_str(&format!("\n\n{} test(s) FAILED, {} passed\n", failures.len(), passed));
+
+        for failure in &failures {
+            error_msg.push_str(&failure.format_diff());
+        }
+
+        error_msg.push_str("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        error_msg.push_str(&format!("Summary: {} failed, {} passed\n", failures.len(), passed));
+        error_msg.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+        panic!("{}", error_msg);
+    }
+
+    println!("\n✓ All {} test(s) passed", passed);
     Ok(())
 }
