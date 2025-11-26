@@ -70,9 +70,6 @@ This document lists the next set of static-analysis rules we want to add so the 
 
 ## Security / validation
 
-- **Hard-coded credentials / tokens**
-  - Detect literal strings that resemble API keys or passwords being passed into known setters or used directly in requests.
-
 - **Cryptographic misuse**
   - Warn when weak hashing functions (`md5`, `sha1`) are used for password hashing or signing without additional stretching/salting.
   - Detect cases where encryption keys are hard-coded or reused across multiple files/contexts.
