@@ -1,8 +1,5 @@
 use crate::analyzer::project::ProjectContext;
-use crate::analyzer::{
-    Diagnostic, Severity,
-    config::{AnalyzerConfig, StrictnessLevel},
-};
+use crate::analyzer::{Diagnostic, Severity, config::AnalyzerConfig};
 use std::path::{Path, PathBuf};
 
 const RULE_NAME: &str = "psr4/namespace";
@@ -36,10 +33,7 @@ pub fn run_namespace_checks(
         }
 
         let expected_dir = describe_directory(relative);
-        let severity = match config.strictness {
-            StrictnessLevel::Strict => Severity::Error,
-            _ => Severity::Warning,
-        };
+        let severity = Severity::Warning;
 
         let actual_description = describe_namespace(scope.namespace.as_deref());
         let expected_description = describe_namespace(expected_namespace.as_deref());

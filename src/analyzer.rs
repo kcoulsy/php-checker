@@ -306,6 +306,7 @@ impl Analyzer {
             Box::new(rules::DuplicateDeclarationRule::new()),
             Box::new(rules::ImpossibleComparisonRule::new()),
             Box::new(rules::RedundantConditionRule::new()),
+            Box::new(rules::DuplicateSwitchCaseRule::new()),
             Box::new(rules::UnreachableCodeRule::new()),
             Box::new(rules::UnusedVariableRule::new()),
             Box::new(rules::UnusedUseRule::new()),

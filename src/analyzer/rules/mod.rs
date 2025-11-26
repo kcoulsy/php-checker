@@ -13,7 +13,9 @@ pub mod strict_typing;
 
 pub use api::{DeprecatedApiRule, InvalidThisRule};
 pub use cleanup::{UnusedUseRule, UnusedVariableRule};
-pub use control_flow::{ImpossibleComparisonRule, RedundantConditionRule, UnreachableCodeRule};
+pub use control_flow::{
+    DuplicateSwitchCaseRule, ImpossibleComparisonRule, RedundantConditionRule, UnreachableCodeRule,
+};
 pub use sanity::{ArrayKeyNotDefinedRule, DuplicateDeclarationRule, UndefinedVariableRule};
 pub use security::{HardCodedCredentialsRule, IncludeUserInputRule, MutatingLiteralRule};
 pub use strict_typing::{

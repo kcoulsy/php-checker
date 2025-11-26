@@ -12,7 +12,6 @@ use std::{
 pub struct AnalyzerConfig {
     #[serde(default)]
     pub rules: HashMap<String, bool>,
-    pub strictness: StrictnessLevel,
     #[serde(default)]
     pub psr4: Psr4Config,
 }
@@ -62,21 +61,6 @@ impl AnalyzerConfig {
     }
 }
 
-/// Controls how aggressive new analysis extensions should behave.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum StrictnessLevel {
-    Lenient,
-    Standard,
-    Strict,
-}
-
-impl Default for StrictnessLevel {
-    fn default() -> Self {
-        StrictnessLevel::Standard
-    }
-}
-
 /// PSR-4 expectations that the analyzer can validate when requested.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
@@ -97,12 +81,6 @@ impl Default for Psr4Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn strictness_defaults_to_standard() {
-        let config: AnalyzerConfig = serde_yaml::from_str("rules:\n  foo: true").unwrap();
-        assert_eq!(config.strictness, StrictnessLevel::Standard);
-    }
 
     #[test]
     fn psr4_config_deserializes_values() {
