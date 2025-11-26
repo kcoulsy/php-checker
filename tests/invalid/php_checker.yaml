@@ -1,6 +1,6 @@
 psr4:
   enabled: true
-  namespace_root: psr4_namespace
+  namespace_root: psr4/psr4_namespace
 rules:
   psr4: true
   psr4/namespace: true

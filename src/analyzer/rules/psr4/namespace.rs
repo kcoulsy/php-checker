@@ -1,3 +1,4 @@
+use crate::analyzer::ignore::IgnoreState;
 use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Diagnostic, Severity, config::AnalyzerConfig};
 use std::path::{Path, PathBuf};
@@ -21,6 +22,11 @@ pub fn run_namespace_checks(
             Ok(relative) => relative,
             Err(_) => continue,
         };
+
+        let ignore_state = IgnoreState::from_source(parsed.source.as_str());
+        if ignore_state.should_ignore(RULE_NAME) {
+            continue;
+        }
 
         let expected_namespace = namespace_from_relative_path(relative);
         let scope = match context.scope_for(&parsed.path) {

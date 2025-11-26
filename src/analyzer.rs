@@ -1,5 +1,6 @@
 pub mod config;
 pub mod fix;
+pub mod ignore;
 mod parser;
 mod project;
 mod rules;
@@ -11,6 +12,7 @@ use std::{
 };
 
 use config::AnalyzerConfig;
+use ignore::IgnoreState;
 use rules::psr4;
 use serde::Serialize;
 
@@ -398,6 +400,11 @@ impl Analyzer {
         parsed: &parser::ParsedSource,
         context: &ProjectContext,
     ) -> Vec<Diagnostic> {
+        let ignore_state = IgnoreState::from_source(parsed.source.as_str());
+        if ignore_state.ignores_everything() {
+            return Vec::new();
+        }
+
         let mut diagnostics = Vec::new();
         for rule in &self.rules {
             let rule_name = rule.name().to_string();
@@ -407,7 +414,15 @@ impl Analyzer {
             }
             diagnostics.extend(rule_diagnostics);
         }
+
         diagnostics
+            .into_iter()
+            .filter(|diag| {
+                diag.rule_name
+                    .as_deref()
+                    .map_or(true, |name| !ignore_state.should_ignore(name))
+            })
+            .collect()
     }
 
     // run_psr4_checks moved to `rules::psr4`.
