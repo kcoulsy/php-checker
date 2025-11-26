@@ -62,10 +62,6 @@ This document lists the next set of static-analysis rules we want to add so the 
   - Warn when literal constants are passed by reference to functions that may mutate them (e.g., `array_pop` on a literal array).
   - Detect when global/static variables are mutated inside functions that declare no side effects, encouraging pure/helper helpers.
 
-- **Deprecated or dangerous API usage**
-  - Provide warnings for known legacy APIs (`mysql_*`, `ereg`, etc.) when encountered, suggesting modern replacements.
-  - Flag cross-file calls to APIs marked with custom annotations stored in the incremental project context.
-
 ## Dead code / duplicates
 
 - **Duplicate declarations**

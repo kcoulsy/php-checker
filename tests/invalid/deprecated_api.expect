@@ -1,0 +1,3 @@
+warning: mysql_connect is deprecated; use modern alternatives
+warning: create_function is deprecated; use modern alternatives
+

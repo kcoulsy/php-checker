@@ -194,6 +194,7 @@ impl Analyzer {
             Box::new(rules::UnusedVariableRule::new()),
             Box::new(rules::UnusedUseRule::new()),
             Box::new(rules::InvalidThisRule::new()),
+            Box::new(rules::DeprecatedApiRule::new()),
         ];
 
         Ok(Self { parser, rules })
