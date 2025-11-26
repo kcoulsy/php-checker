@@ -15,7 +15,7 @@ impl ArrayKeyNotDefinedRule {
 
 impl DiagnosticRule for ArrayKeyNotDefinedRule {
     fn name(&self) -> &str {
-        "array-key-not-defined"
+        "sanity/array_key_not_defined"
     }
 
     fn run(

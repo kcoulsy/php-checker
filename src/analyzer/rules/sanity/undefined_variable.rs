@@ -15,7 +15,7 @@ impl UndefinedVariableRule {
 
 impl DiagnosticRule for UndefinedVariableRule {
     fn name(&self) -> &str {
-        "undefined-variable"
+        "sanity/undefined_variable"
     }
 
     fn run(

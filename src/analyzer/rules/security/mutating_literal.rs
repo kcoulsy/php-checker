@@ -22,7 +22,7 @@ impl MutatingLiteralRule {
 
 impl DiagnosticRule for MutatingLiteralRule {
     fn name(&self) -> &str {
-        "mutating-literal"
+        "security/mutating_literal"
     }
 
     fn run(

@@ -13,7 +13,7 @@ impl MissingArgumentRule {
 
 impl DiagnosticRule for MissingArgumentRule {
     fn name(&self) -> &str {
-        "missing-argument"
+        "strict_typing/missing_argument"
     }
 
     fn run(

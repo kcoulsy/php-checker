@@ -13,7 +13,7 @@ impl StrictTypesRule {
 
 impl DiagnosticRule for StrictTypesRule {
     fn name(&self) -> &str {
-        "strict-types"
+        "strict_typing/strict_types"
     }
 
     fn run(

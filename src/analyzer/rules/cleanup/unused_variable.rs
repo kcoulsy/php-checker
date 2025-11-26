@@ -15,7 +15,7 @@ impl UnusedVariableRule {
 
 impl DiagnosticRule for UnusedVariableRule {
     fn name(&self) -> &str {
-        "unused-variable"
+        "cleanup/unused_variable"
     }
 
     fn run(

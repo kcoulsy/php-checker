@@ -14,7 +14,7 @@ impl UnreachableCodeRule {
 
 impl DiagnosticRule for UnreachableCodeRule {
     fn name(&self) -> &str {
-        "unreachable-code"
+        "control_flow/unreachable"
     }
 
     fn run(

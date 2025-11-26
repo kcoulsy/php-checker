@@ -15,7 +15,7 @@ impl HardCodedCredentialsRule {
 
 impl DiagnosticRule for HardCodedCredentialsRule {
     fn name(&self) -> &str {
-        "hard-coded-credentials"
+        "security/hard_coded_credentials"
     }
 
     fn run(

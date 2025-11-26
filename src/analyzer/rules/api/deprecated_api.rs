@@ -21,7 +21,7 @@ impl DeprecatedApiRule {
 
 impl DiagnosticRule for DeprecatedApiRule {
     fn name(&self) -> &str {
-        "deprecated-api"
+        "api/deprecated_api"
     }
 
     fn run(

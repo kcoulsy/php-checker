@@ -5,6 +5,8 @@ use crate::analyzer::{
 };
 use std::path::{Path, PathBuf};
 
+const RULE_NAME: &str = "psr4/namespace";
+
 pub fn run_namespace_checks(
     root: &Path,
     context: &ProjectContext,
@@ -46,7 +48,9 @@ pub fn run_namespace_checks(
             actual_description
         );
 
-        diagnostics.push(Diagnostic::new(parsed.path.clone(), severity, message));
+        let mut diagnostic = Diagnostic::new(parsed.path.clone(), severity, message);
+        diagnostic.rule_name = Some(RULE_NAME.to_string());
+        diagnostics.push(diagnostic);
     }
 
     diagnostics

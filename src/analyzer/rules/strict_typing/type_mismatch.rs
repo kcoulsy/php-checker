@@ -16,7 +16,7 @@ impl TypeMismatchRule {
 
 impl DiagnosticRule for TypeMismatchRule {
     fn name(&self) -> &str {
-        "type-mismatch"
+        "strict_typing/type_mismatch"
     }
 
     fn run(

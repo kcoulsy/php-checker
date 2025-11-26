@@ -47,6 +47,7 @@ pub struct Diagnostic {
     pub file: PathBuf,
     pub severity: Severity,
     pub message: String,
+    pub rule_name: Option<String>,
     pub span: Option<Span>,
     pub snippet_before: Option<String>,
     pub snippet_line: Option<String>,
@@ -62,6 +63,7 @@ impl Diagnostic {
             file,
             severity,
             message: message.into(),
+            rule_name: None,
             span: None,
             snippet_before: None,
             snippet_line: None,
@@ -92,6 +94,7 @@ impl Diagnostic {
             snippet_after,
             caret_col,
             caret_len: caret_len.max(1),
+            rule_name: None,
         }
     }
 }
@@ -108,11 +111,15 @@ impl fmt::Display for Diagnostic {
             Severity::Warning | Severity::Info => BOLD_YELLOW,
             _ => BOLD_RED,
         };
-        writeln!(
-            f,
-            "{}{}{}: {}",
-            severity_color, self.severity, RESET, self.message
-        )?;
+        let mut header = format!("{}{}{}", severity_color, self.severity, RESET);
+        if let Some(rule) = &self.rule_name {
+            header.push(' ');
+            header.push('[');
+            header.push_str(rule);
+            header.push(']');
+        }
+
+        writeln!(f, "{}: {}", header, self.message)?;
 
         if let Some(span) = &self.span {
             writeln!(
@@ -261,8 +268,12 @@ impl Analyzer {
     ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         for rule in &self.rules {
-            let _ = rule.name();
-            diagnostics.extend(rule.run(parsed, context));
+            let rule_name = rule.name().to_string();
+            let mut rule_diagnostics = rule.run(parsed, context);
+            for diag in rule_diagnostics.iter_mut() {
+                diag.rule_name = Some(rule_name.clone());
+            }
+            diagnostics.extend(rule_diagnostics);
         }
         diagnostics
     }

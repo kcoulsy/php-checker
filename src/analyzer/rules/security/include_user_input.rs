@@ -24,7 +24,7 @@ impl IncludeUserInputRule {
 
 impl DiagnosticRule for IncludeUserInputRule {
     fn name(&self) -> &str {
-        "include-user-input"
+        "security/include_user_input"
     }
 
     fn run(

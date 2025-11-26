@@ -14,7 +14,7 @@ impl ImpossibleComparisonRule {
 
 impl DiagnosticRule for ImpossibleComparisonRule {
     fn name(&self) -> &str {
-        "impossible-comparison"
+        "control_flow/impossible_comparison"
     }
 
     fn run(

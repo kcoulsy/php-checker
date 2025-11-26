@@ -15,7 +15,7 @@ impl MissingReturnRule {
 
 impl DiagnosticRule for MissingReturnRule {
     fn name(&self) -> &str {
-        "missing-return"
+        "strict_typing/missing_return"
     }
 
     fn run(

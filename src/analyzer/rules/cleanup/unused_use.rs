@@ -15,7 +15,7 @@ impl UnusedUseRule {
 
 impl DiagnosticRule for UnusedUseRule {
     fn name(&self) -> &str {
-        "unused-import"
+        "cleanup/unused_use"
     }
 
     fn run(

@@ -13,7 +13,7 @@ impl InvalidThisRule {
 
 impl DiagnosticRule for InvalidThisRule {
     fn name(&self) -> &str {
-        "invalid-this"
+        "api/invalid_this"
     }
 
     fn run(

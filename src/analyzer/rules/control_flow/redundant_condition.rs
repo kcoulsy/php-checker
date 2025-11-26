@@ -14,7 +14,7 @@ impl RedundantConditionRule {
 
 impl DiagnosticRule for RedundantConditionRule {
     fn name(&self) -> &str {
-        "redundant-condition"
+        "control_flow/redundant_condition"
     }
 
     fn run(

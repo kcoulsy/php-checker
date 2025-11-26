@@ -14,7 +14,7 @@ impl DuplicateDeclarationRule {
 
 impl DiagnosticRule for DuplicateDeclarationRule {
     fn name(&self) -> &str {
-        "duplicate-declaration"
+        "sanity/duplicate_declaration"
     }
 
     fn run(
