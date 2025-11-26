@@ -1,4 +1,5 @@
 use php_checker::analyzer;
+use php_checker::analyzer::config::AnalyzerConfig;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -11,6 +12,8 @@ use std::time::Instant;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+    #[arg(long, value_name = "FILE")]
+    config: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -26,14 +29,21 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Analyse { path } => run_analysis(path),
+        Commands::Analyse { path } => run_analysis(path, cli.config),
     }
 }
 
-fn run_analysis(path: PathBuf) -> Result<()> {
+fn run_analysis(path: PathBuf, config_path: Option<PathBuf>) -> Result<()> {
     let canonical_path = path
         .canonicalize()
         .with_context(|| format!("failed to access {}", path.display()))?;
+
+    let config_file = AnalyzerConfig::find_config(config_path, &canonical_path);
+    let config = if let Some(path) = config_file {
+        Some(AnalyzerConfig::load(path)?)
+    } else {
+        None
+    };
 
     let php_files = analyzer::collect_php_files(&canonical_path)?;
 
@@ -42,7 +52,7 @@ fn run_analysis(path: PathBuf) -> Result<()> {
         return Ok(());
     }
 
-    let mut analyzer = analyzer::Analyzer::new()?;
+    let mut analyzer = analyzer::Analyzer::new(config)?;
     let start = Instant::now();
     let diagnostics = analyzer.analyse_root(&canonical_path)?;
     let duration = start.elapsed();

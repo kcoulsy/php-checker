@@ -12,6 +12,7 @@ pub mod invalid_this;
 pub mod missing_argument;
 pub mod missing_return;
 pub mod mutating_literal;
+pub mod psr4;
 pub mod redundant_condition;
 pub mod strict_types;
 pub mod type_mismatch;

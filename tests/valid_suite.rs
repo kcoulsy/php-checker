@@ -14,7 +14,7 @@ fn valid_fixtures_have_no_diagnostics() -> Result<()> {
     let valid_dir = Path::new("tests/valid");
     let php_files = collect_php_files(valid_dir)?;
 
-    let mut analyzer = Analyzer::new()?;
+    let mut analyzer = Analyzer::new(None)?;
     let diagnostics = analyzer.analyse_root(valid_dir)?;
 
     let mut by_file: HashMap<String, Vec<String>> = HashMap::new();

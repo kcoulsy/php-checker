@@ -9,6 +9,8 @@ clap = { version = "4.5", features = ["derive"] }
 walkdir = "2.5"
 tree-sitter = "0.20"
 tree-sitter-php = "0.20"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_yaml = "0.9.34"
 
 [[bin]]
 name = "dump-tree"

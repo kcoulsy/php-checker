@@ -4,6 +4,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
+use php_checker::analyzer::config::AnalyzerConfig;
 use php_checker::analyzer::{Analyzer, Diagnostic, collect_php_files};
 
 fn diagnostic_summary(diag: &Diagnostic) -> String {
@@ -24,7 +25,10 @@ fn expect_lines(path: &Path) -> Result<Vec<String>> {
 #[test]
 fn invalid_fixtures_match_expectations() -> Result<()> {
     let invalid_dir = Path::new("tests/invalid");
-    let mut analyzer = Analyzer::new()?;
+    let config = AnalyzerConfig::find_config(None, invalid_dir)
+        .map(|path| AnalyzerConfig::load(path))
+        .transpose()?;
+    let mut analyzer = Analyzer::new(config)?;
     let php_files = collect_php_files(invalid_dir)?;
     let diagnostics = analyzer.analyse_root(invalid_dir)?;
 

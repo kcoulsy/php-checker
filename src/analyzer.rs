@@ -1,3 +1,4 @@
+pub mod config;
 mod parser;
 mod project;
 mod rules;
@@ -6,6 +7,9 @@ use std::{
     fmt,
     path::{Path, PathBuf},
 };
+
+use config::AnalyzerConfig;
+use rules::psr4;
 
 use anyhow::Result;
 use project::ProjectContext;
@@ -176,12 +180,13 @@ impl fmt::Display for Diagnostic {
 pub struct Analyzer {
     parser: Box<dyn parser::PhpParser>,
     rules: Vec<Box<dyn rules::DiagnosticRule>>,
+    config: AnalyzerConfig,
 }
 
 impl Analyzer {
-    pub fn new() -> Result<Self> {
+    pub fn new(config: Option<AnalyzerConfig>) -> Result<Self> {
         let parser = Box::new(parser::TreeSitterPhpParser::new()?);
-        let rules: Vec<Box<dyn rules::DiagnosticRule>> = vec![
+        let mut rules: Vec<Box<dyn rules::DiagnosticRule>> = vec![
             Box::new(rules::UndefinedVariableRule::new()),
             Box::new(rules::ArrayKeyNotDefinedRule::new()),
             Box::new(rules::MissingReturnRule::new()),
@@ -201,7 +206,14 @@ impl Analyzer {
             Box::new(rules::HardCodedCredentialsRule::new()),
         ];
 
-        Ok(Self { parser, rules })
+        let config = config.unwrap_or_default();
+        rules.retain(|rule| config.enabled(rule.name()));
+
+        Ok(Self {
+            parser,
+            rules,
+            config,
+        })
     }
 
     pub fn analyse_file(&mut self, path: &Path) -> Result<Vec<Diagnostic>> {
@@ -217,7 +229,8 @@ impl Analyzer {
     }
 
     pub fn analyse_root(&mut self, root: &Path) -> Result<Vec<Diagnostic>> {
-        let paths = collect_php_files(root)?;
+        let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        let paths = collect_php_files(&canonical_root)?;
         let mut context = ProjectContext::new();
 
         for path in paths {
@@ -228,6 +241,14 @@ impl Analyzer {
         let mut diagnostics = Vec::new();
         for parsed in context.iter() {
             diagnostics.extend(self.collect_diagnostics(parsed, &context));
+        }
+
+        if self.config.psr4.enabled {
+            diagnostics.extend(psr4::run_namespace_checks(
+                &canonical_root,
+                &context,
+                &self.config,
+            ));
         }
 
         Ok(diagnostics)
@@ -245,6 +266,8 @@ impl Analyzer {
         }
         diagnostics
     }
+
+    // run_psr4_checks moved to `rules::psr4`.
 }
 
 pub fn collect_php_files(root: &Path) -> Result<Vec<PathBuf>> {

@@ -1,0 +1,2 @@
+warning: namespace `App` does not match PSR-4 directory "src" (expected namespace `src`)
+
