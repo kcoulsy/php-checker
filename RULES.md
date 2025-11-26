@@ -70,20 +70,12 @@ This document lists the next set of static-analysis rules we want to add so the 
 
 ## Security / validation
 
-- **User-input tracking**
-  - Track the flow of superglobals (`$_GET`, `$_POST`, etc.) and warn when they reach sensitive sinks (database queries, `eval`, file operations) without sanitization or validation.
-  - Flag string concatenation that includes user input before a potentially dangerous call.
-
 - **Hard-coded credentials / tokens**
   - Detect literal strings that resemble API keys or passwords being passed into known setters or used directly in requests.
 
 - **Cryptographic misuse**
   - Warn when weak hashing functions (`md5`, `sha1`) are used for password hashing or signing without additional stretching/salting.
   - Detect cases where encryption keys are hard-coded or reused across multiple files/contexts.
-
-- **Filesystem sandboxing**
-  - Detect `include`/`require` paths that incorporate user input or unsanitized variables, warning about directory traversal vulnerabilities.
-  - Flag `file_put_contents` / `fopen` calls that operate on data derived from `$_FILES` without validating the destination path.
 
 ## Best practices
 

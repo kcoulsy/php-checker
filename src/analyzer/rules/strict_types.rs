@@ -1,7 +1,7 @@
 use super::DiagnosticRule;
 use super::helpers::{diagnostic_for_node, walk_node};
-use crate::analyzer::{Severity, parser};
 use crate::analyzer::project::ProjectContext;
+use crate::analyzer::{Severity, parser};
 
 pub struct StrictTypesRule;
 
@@ -82,4 +82,3 @@ fn has_type_hint(parsed: &parser::ParsedSource) -> bool {
     });
     found
 }
-

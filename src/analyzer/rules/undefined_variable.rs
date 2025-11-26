@@ -55,7 +55,22 @@ impl<'a> ScopeVisitor<'a> {
         if node.kind() == "variable_name" {
             if let Some(name) = self.variable_name_text(node) {
                 if name == "this" {
-                    // Allow $this in class scopes and warn elsewhere via another rule.
+                    return;
+                }
+
+                if matches!(
+                    name.as_str(),
+                    "_GET"
+                        | "_POST"
+                        | "_REQUEST"
+                        | "_COOKIE"
+                        | "_FILES"
+                        | "_SERVER"
+                        | "_ENV"
+                        | "argc"
+                        | "argv"
+                ) {
+                    self.define_variable(name);
                     return;
                 }
 
