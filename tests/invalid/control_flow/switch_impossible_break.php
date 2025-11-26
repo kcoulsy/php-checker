@@ -1,5 +1,7 @@
 <?php
 
+// php-checker-ignore: strict_typing/force_return_type
+
 function test_impossible_break(): void {
     $value = 1;
     switch ($value) {

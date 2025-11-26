@@ -305,6 +305,8 @@ impl Analyzer {
             Box::new(rules::MissingReturnRule::new()),
             Box::new(rules::MissingArgumentRule::new()),
             Box::new(rules::TypeMismatchRule::new()),
+            Box::new(rules::ConsistentReturnRule::new()),
+            Box::new(rules::ForceReturnTypeRule::new()),
             Box::new(rules::DuplicateDeclarationRule::new()),
             Box::new(rules::ImpossibleComparisonRule::new()),
             Box::new(rules::RedundantConditionRule::new()),

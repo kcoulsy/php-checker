@@ -1,2 +1,3 @@
 error: function maybeString is missing a return on some paths at 3:10
+warning: function maybeString should have an explicit return type at 3:10
 
