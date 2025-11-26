@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use php_checker::analyzer::{fix, Analyzer, collect_php_files};
+use php_checker::analyzer::{Analyzer, collect_php_files, fix};
 
 #[test]
 fn fixable_fixtures_match_fixed_expectations() -> Result<()> {
@@ -22,10 +22,7 @@ fn fixable_fixtures_match_fixed_expectations() -> Result<()> {
 
         let source = fs::read_to_string(&canonical_php_file)
             .with_context(|| format!("failed to read {}", canonical_php_file.display()))?;
-        let edits = fixes
-            .get(&canonical_php_file)
-            .cloned()
-            .unwrap_or_default();
+        let edits = fixes.get(&canonical_php_file).cloned().unwrap_or_default();
 
         if edits.is_empty() {
             panic!(
@@ -49,4 +46,3 @@ fn fixable_fixtures_match_fixed_expectations() -> Result<()> {
 
     Ok(())
 }
-

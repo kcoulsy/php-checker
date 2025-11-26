@@ -12,6 +12,7 @@ use std::{
 
 use config::AnalyzerConfig;
 use rules::psr4;
+use serde::Serialize;
 
 use anyhow::Result;
 use project::ProjectContext;
@@ -20,7 +21,8 @@ use walkdir::WalkDir;
 
 /// Represents the severity of a diagnostic.
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,
     Warning,
@@ -97,6 +99,21 @@ impl Diagnostic {
             caret_col,
             caret_len: caret_len.max(1),
             rule_name: None,
+        }
+    }
+
+    pub fn to_json(&self) -> DiagnosticJson {
+        DiagnosticJson {
+            file: self.file.display().to_string(),
+            severity: self.severity.clone(),
+            message: self.message.clone(),
+            rule_name: self.rule_name.clone(),
+            span: self.span.as_ref().map(|span| span.into()),
+            snippet_before: self.snippet_before.clone(),
+            snippet_line: self.snippet_line.clone(),
+            snippet_after: self.snippet_after.clone(),
+            caret_col: self.caret_col,
+            caret_len: self.caret_len,
         }
     }
 }
@@ -185,6 +202,91 @@ impl fmt::Display for Diagnostic {
     }
 }
 
+#[derive(Serialize)]
+pub struct DiagnosticJson {
+    file: String,
+    severity: Severity,
+    message: String,
+    rule_name: Option<String>,
+    span: Option<SpanJson>,
+    snippet_before: Option<String>,
+    snippet_line: Option<String>,
+    snippet_after: Option<String>,
+    caret_col: Option<usize>,
+    caret_len: usize,
+}
+
+#[derive(Serialize)]
+pub struct SpanJson {
+    start: PointJson,
+    end: PointJson,
+}
+
+#[derive(Serialize)]
+pub struct PointJson {
+    row: usize,
+    column: usize,
+}
+
+impl From<&Span> for SpanJson {
+    fn from(span: &Span) -> Self {
+        Self {
+            start: span.start.into(),
+            end: span.end.into(),
+        }
+    }
+}
+
+impl From<Point> for PointJson {
+    fn from(point: Point) -> Self {
+        Self {
+            row: point.row,
+            column: point.column,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use tree_sitter::Point;
+
+    #[test]
+    fn diagnostic_to_json_includes_span_and_snippets() {
+        let span = Span {
+            start: Point { row: 1, column: 2 },
+            end: Point { row: 1, column: 5 },
+        };
+
+        let diag = Diagnostic::with_span(
+            PathBuf::from("example.php"),
+            Severity::Warning,
+            "example message",
+            span,
+            Some("before".into()),
+            Some("line".into()),
+            Some("after".into()),
+            Some(4),
+            3,
+        );
+
+        let json = diag.to_json();
+
+        assert_eq!(json.file, "example.php");
+        assert_eq!(json.severity, Severity::Warning);
+        let span_json = json.span.as_ref().expect("span should be set");
+        assert_eq!(span_json.start.row, 1);
+        assert_eq!(span_json.start.column, 2);
+        assert_eq!(span_json.end.column, 5);
+        assert_eq!(json.snippet_before.as_deref(), Some("before"));
+        assert_eq!(json.snippet_line.as_deref(), Some("line"));
+        assert_eq!(json.snippet_after.as_deref(), Some("after"));
+        assert_eq!(json.caret_col, Some(4));
+        assert_eq!(json.caret_len, 3);
+    }
+}
+
 /// Lightweight analyzer that drives future passes.
 pub struct Analyzer {
     parser: Box<dyn parser::PhpParser>,
@@ -263,10 +365,7 @@ impl Analyzer {
         Ok(diagnostics)
     }
 
-    pub fn fix_root(
-        &mut self,
-        root: &Path,
-    ) -> Result<BTreeMap<PathBuf, Vec<fix::TextEdit>>> {
+    pub fn fix_root(&mut self, root: &Path) -> Result<BTreeMap<PathBuf, Vec<fix::TextEdit>>> {
         let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
         let paths = collect_php_files(&canonical_root)?;
         let mut context = ProjectContext::new();

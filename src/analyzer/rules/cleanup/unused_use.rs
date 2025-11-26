@@ -37,11 +37,7 @@ impl DiagnosticRule for UnusedUseRule {
             .collect()
     }
 
-    fn fix(
-        &self,
-        parsed: &parser::ParsedSource,
-        context: &ProjectContext,
-    ) -> Vec<fix::TextEdit> {
+    fn fix(&self, parsed: &parser::ParsedSource, context: &ProjectContext) -> Vec<fix::TextEdit> {
         let source = parsed.source.as_str();
 
         unused_aliases(parsed, context)

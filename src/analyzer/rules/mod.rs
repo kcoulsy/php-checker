@@ -28,11 +28,7 @@ pub trait DiagnosticRule {
         context: &ProjectContext,
     ) -> Vec<super::Diagnostic>;
 
-    fn fix(
-        &self,
-        _parsed: &parser::ParsedSource,
-        _context: &ProjectContext,
-    ) -> Vec<fix::TextEdit> {
+    fn fix(&self, _parsed: &parser::ParsedSource, _context: &ProjectContext) -> Vec<fix::TextEdit> {
         Vec::new()
     }
 }

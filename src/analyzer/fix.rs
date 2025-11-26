@@ -69,4 +69,3 @@ fn line_end(source: &str, idx: usize) -> usize {
     }
     pos
 }
-

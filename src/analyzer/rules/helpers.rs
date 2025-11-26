@@ -289,3 +289,11 @@ fn literal_kind(node: Node) -> Option<LiteralKind> {
         _ => None,
     }
 }
+
+pub fn newline_for_source(source: &str) -> &'static str {
+    if source.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
