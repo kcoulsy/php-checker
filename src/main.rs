@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use std::time::Instant;
 
 /// Entry point for the PHP checker CLI.
 #[derive(Parser)]
@@ -42,7 +43,17 @@ fn run_analysis(path: PathBuf) -> Result<()> {
     }
 
     let mut analyzer = analyzer::Analyzer::new()?;
+    let start = Instant::now();
     let diagnostics = analyzer.analyse_root(&canonical_path)?;
+    let duration = start.elapsed();
+    let error_count = diagnostics
+        .iter()
+        .filter(|d| matches!(d.severity, analyzer::Severity::Error))
+        .count();
+    let warning_count = diagnostics
+        .iter()
+        .filter(|d| matches!(d.severity, analyzer::Severity::Warning))
+        .count();
 
     if diagnostics.is_empty() {
         println!(
@@ -54,6 +65,14 @@ fn run_analysis(path: PathBuf) -> Result<()> {
             println!("{diag}");
         }
     }
+
+    println!(
+        "Stats ▸ {} file(s) | {} error(s), {} warning(s) | {:.2}s",
+        php_files.len(),
+        error_count,
+        warning_count,
+        duration.as_secs_f64()
+    );
 
     Ok(())
 }
