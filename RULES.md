@@ -58,10 +58,6 @@ This document lists the next set of static-analysis rules we want to add so the 
   - Report function/class/method references that do not resolve in the project context, including cases where PHP’s autoloading would fail.
   - Flag `use` statements that alias symbols that don’t exist in the resolved namespace set.
 
-- **Immutable arguments / side-effect detection**
-  - Warn when literal constants are passed by reference to functions that may mutate them (e.g., `array_pop` on a literal array).
-  - Detect when global/static variables are mutated inside functions that declare no side effects, encouraging pure/helper helpers.
-
 ## Dead code / duplicates
 
 - **Duplicate declarations**

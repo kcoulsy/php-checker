@@ -1,5 +1,5 @@
 use super::DiagnosticRule;
-use super::helpers::{diagnostic_for_node, node_text, walk_node};
+use super::helpers::{child_by_kind, diagnostic_for_node, node_text, walk_node};
 use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
 
@@ -36,7 +36,7 @@ impl DiagnosticRule for DeprecatedApiRule {
                 return;
             }
 
-            if let Some(name_node) = node.child_by_field_name("name") {
+            if let Some(name_node) = child_by_kind(node, "name") {
                 if let Some(name) = node_text(name_node, parsed) {
                     if DEPRECATED_APIS.contains(&name.as_str()) {
                         diagnostics.push(diagnostic_for_node(

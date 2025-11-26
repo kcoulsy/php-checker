@@ -24,14 +24,16 @@ fn expect_lines(path: &Path) -> Result<Vec<String>> {
 #[test]
 fn invalid_fixtures_match_expectations() -> Result<()> {
     let invalid_dir = Path::new("tests/invalid");
+    let invalid_dir_canonical = invalid_dir.canonicalize()?;
     let mut analyzer = Analyzer::new()?;
     let php_files = collect_php_files(invalid_dir)?;
     let diagnostics = analyzer.analyse_root(invalid_dir)?;
 
     let mut by_file: HashMap<PathBuf, Vec<String>> = HashMap::new();
     for diag in diagnostics {
+        let key = relative_to_base(&diag.file, &invalid_dir_canonical);
         by_file
-            .entry(diag.file.clone())
+            .entry(key)
             .or_default()
             .push(diagnostic_summary(&diag));
     }
@@ -43,7 +45,8 @@ fn invalid_fixtures_match_expectations() -> Result<()> {
         }
 
         let expect = expect_lines(&expect_path)?;
-        let actual = by_file.remove(&path).unwrap_or_default();
+        let key = relative_to_base(&path, &invalid_dir_canonical);
+        let actual = by_file.remove(&key).unwrap_or_default();
 
         assert_eq!(
             expect,
@@ -54,4 +57,16 @@ fn invalid_fixtures_match_expectations() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn relative_to_base(path: &Path, base: &Path) -> PathBuf {
+    if let Ok(canonical) = path.canonicalize() {
+        if let Ok(rel) = canonical.strip_prefix(base) {
+            return rel.to_path_buf();
+        }
+    }
+    if let Ok(rel) = path.strip_prefix(base) {
+        return rel.to_path_buf();
+    }
+    path.to_path_buf()
 }

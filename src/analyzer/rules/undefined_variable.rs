@@ -55,8 +55,7 @@ impl<'a> ScopeVisitor<'a> {
         if node.kind() == "variable_name" {
             if let Some(name) = self.variable_name_text(node) {
                 if name == "this" {
-                    // $this is implicitly defined inside class scopes.
-                    self.define_variable(name.clone());
+                    // Allow $this in class scopes and warn elsewhere via another rule.
                     return;
                 }
 

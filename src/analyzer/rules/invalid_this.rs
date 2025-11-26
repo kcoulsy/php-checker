@@ -1,8 +1,7 @@
 use super::DiagnosticRule;
-use super::helpers::{diagnostic_for_node, node_text, walk_node};
+use super::helpers::{child_by_kind, diagnostic_for_node, node_text, walk_node};
 use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
-use tree_sitter::Node;
 
 pub struct InvalidThisRule;
 
@@ -29,22 +28,25 @@ impl DiagnosticRule for InvalidThisRule {
                 return;
             }
 
-            if let Some(name) = node_text(node, parsed) {
-                if name != "this" {
-                    return;
-                }
-            } else {
+            let name = match node_text(node, parsed) {
+                Some(name) => name.trim_start_matches('$').to_string(),
+                None => return,
+            };
+
+            if name != "this" {
                 return;
             }
 
             let mut parent = node;
-            let mut found_method = None;
             let mut found_class = false;
+            let mut in_static_method = false;
 
             while let Some(p) = parent.parent() {
                 match p.kind() {
                     "method_declaration" => {
-                        found_method = Some(p);
+                        if child_by_kind(p, "static_modifier").is_some() {
+                            in_static_method = true;
+                        }
                         parent = p;
                     }
                     "class_declaration" => {
@@ -65,17 +67,13 @@ impl DiagnosticRule for InvalidThisRule {
                 return;
             }
 
-            if let Some(method) = found_method {
-                if let Some(text) = node_text(method, parsed) {
-                    if text.contains("static") {
-                        diagnostics.push(diagnostic_for_node(
-                            parsed,
-                            node,
-                            Severity::Error,
-                            "$this cannot be used in static context",
-                        ));
-                    }
-                }
+            if in_static_method {
+                diagnostics.push(diagnostic_for_node(
+                    parsed,
+                    node,
+                    Severity::Error,
+                    "$this cannot be used in static context",
+                ));
             }
         });
 
