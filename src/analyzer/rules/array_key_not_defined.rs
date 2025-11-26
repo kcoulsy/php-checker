@@ -1,5 +1,6 @@
 use super::DiagnosticRule;
 use super::helpers::{child_by_kind, diagnostic_for_node, node_text, variable_name_text};
+use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::Node;
@@ -17,7 +18,11 @@ impl DiagnosticRule for ArrayKeyNotDefinedRule {
         "array-key-not-defined"
     }
 
-    fn run(&self, parsed: &parser::ParsedSource) -> Vec<crate::analyzer::Diagnostic> {
+    fn run(
+        &self,
+        parsed: &parser::ParsedSource,
+        _context: &ProjectContext,
+    ) -> Vec<crate::analyzer::Diagnostic> {
         let mut visitor = ArrayKeyVisitor::new(parsed);
         visitor.visit(parsed.tree.root_node());
         visitor.diagnostics

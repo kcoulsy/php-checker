@@ -42,11 +42,7 @@ fn run_analysis(path: PathBuf) -> Result<()> {
     }
 
     let mut analyzer = analyzer::Analyzer::new()?;
-    let mut diagnostics = Vec::new();
-
-    for file in &php_files {
-        diagnostics.extend(analyzer.analyse_file(file)?);
-    }
+    let diagnostics = analyzer.analyse_root(&canonical_path)?;
 
     if diagnostics.is_empty() {
         println!(

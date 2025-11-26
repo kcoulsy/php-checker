@@ -1,4 +1,5 @@
 mod parser;
+mod project;
 mod rules;
 
 use std::{
@@ -7,6 +8,7 @@ use std::{
 };
 
 use anyhow::Result;
+use project::ProjectContext;
 use tree_sitter::Point;
 use walkdir::WalkDir;
 
@@ -183,14 +185,44 @@ impl Analyzer {
 
     pub fn analyse_file(&mut self, path: &Path) -> Result<Vec<Diagnostic>> {
         let parsed = self.parser.parse_file(path)?;
-        let mut diagnostics = Vec::new();
+        let mut context = ProjectContext::new();
+        context.insert(parsed);
 
-        for rule in &self.rules {
-            let _rule_name = rule.name();
-            diagnostics.extend(rule.run(&parsed));
+        let parsed_ref = context
+            .get(path)
+            .expect("parsed file should exist in context");
+
+        Ok(self.collect_diagnostics(parsed_ref, &context))
+    }
+
+    pub fn analyse_root(&mut self, root: &Path) -> Result<Vec<Diagnostic>> {
+        let paths = collect_php_files(root)?;
+        let mut context = ProjectContext::new();
+
+        for path in paths {
+            let parsed = self.parser.parse_file(&path)?;
+            context.insert(parsed);
+        }
+
+        let mut diagnostics = Vec::new();
+        for parsed in context.iter() {
+            diagnostics.extend(self.collect_diagnostics(parsed, &context));
         }
 
         Ok(diagnostics)
+    }
+
+    fn collect_diagnostics(
+        &self,
+        parsed: &parser::ParsedSource,
+        context: &ProjectContext,
+    ) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+        for rule in &self.rules {
+            let _ = rule.name();
+            diagnostics.extend(rule.run(parsed, context));
+        }
+        diagnostics
     }
 }
 

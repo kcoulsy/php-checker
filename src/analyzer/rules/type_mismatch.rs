@@ -3,6 +3,7 @@ use super::helpers::{
     LiteralKind, TypeHint, argument_literal_kind, child_by_kind, collect_function_signatures,
     diagnostic_for_node, node_text, walk_node,
 };
+use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
 
 pub struct TypeMismatchRule;
@@ -18,7 +19,11 @@ impl DiagnosticRule for TypeMismatchRule {
         "type-mismatch"
     }
 
-    fn run(&self, parsed: &parser::ParsedSource) -> Vec<crate::analyzer::Diagnostic> {
+    fn run(
+        &self,
+        parsed: &parser::ParsedSource,
+        _context: &ProjectContext,
+    ) -> Vec<crate::analyzer::Diagnostic> {
         let signatures = collect_function_signatures(parsed);
         let mut diagnostics = Vec::new();
 

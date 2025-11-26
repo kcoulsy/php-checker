@@ -2,6 +2,7 @@ use super::DiagnosticRule;
 use super::helpers::{
     child_by_kind, diagnostic_for_node, has_conditional_ancestor, node_text, walk_node,
 };
+use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
 
 pub struct MissingReturnRule;
@@ -17,7 +18,11 @@ impl DiagnosticRule for MissingReturnRule {
         "missing-return"
     }
 
-    fn run(&self, parsed: &parser::ParsedSource) -> Vec<crate::analyzer::Diagnostic> {
+    fn run(
+        &self,
+        parsed: &parser::ParsedSource,
+        _context: &ProjectContext,
+    ) -> Vec<crate::analyzer::Diagnostic> {
         let mut diagnostics = Vec::new();
 
         walk_node(parsed.tree.root_node(), &mut |node| {

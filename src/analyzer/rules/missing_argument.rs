@@ -1,7 +1,6 @@
 use super::DiagnosticRule;
-use super::helpers::{
-    child_by_kind, collect_function_signatures, diagnostic_for_node, node_text, walk_node,
-};
+use super::helpers::{child_by_kind, diagnostic_for_node, node_text, walk_node};
+use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
 
 pub struct MissingArgumentRule;
@@ -17,8 +16,11 @@ impl DiagnosticRule for MissingArgumentRule {
         "missing-argument"
     }
 
-    fn run(&self, parsed: &parser::ParsedSource) -> Vec<crate::analyzer::Diagnostic> {
-        let signatures = collect_function_signatures(parsed);
+    fn run(
+        &self,
+        parsed: &parser::ParsedSource,
+        context: &ProjectContext,
+    ) -> Vec<crate::analyzer::Diagnostic> {
         let mut diagnostics = Vec::new();
 
         walk_node(parsed.tree.root_node(), &mut |node| {
@@ -26,8 +28,10 @@ impl DiagnosticRule for MissingArgumentRule {
                 return;
             }
 
-            let name_node = match child_by_kind(node, "name") {
-                Some(name_node) => name_node,
+            let name_node =
+                child_by_kind(node, "name").or_else(|| child_by_kind(node, "qualified_name"));
+            let name_node = match name_node {
+                Some(node) => node,
                 None => return,
             };
 
@@ -36,8 +40,8 @@ impl DiagnosticRule for MissingArgumentRule {
                 None => return,
             };
 
-            let signature = match signatures.get(&name) {
-                Some(signature) => signature,
+            let symbol = match context.resolve_function_symbol(&name, parsed) {
+                Some(symbol) => symbol,
                 None => return,
             };
 
@@ -55,7 +59,7 @@ impl DiagnosticRule for MissingArgumentRule {
                 })
                 .count();
 
-            if count < signature.params.len() {
+            if count < symbol.required_params {
                 diagnostics.push(diagnostic_for_node(
                     parsed,
                     name_node,

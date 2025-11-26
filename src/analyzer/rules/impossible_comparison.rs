@@ -1,5 +1,6 @@
 use super::DiagnosticRule;
 use super::helpers::{diagnostic_for_node, literal_type, node_text, variable_name_text, walk_node};
+use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
 use std::collections::HashMap;
 
@@ -16,7 +17,11 @@ impl DiagnosticRule for ImpossibleComparisonRule {
         "impossible-comparison"
     }
 
-    fn run(&self, parsed: &parser::ParsedSource) -> Vec<crate::analyzer::Diagnostic> {
+    fn run(
+        &self,
+        parsed: &parser::ParsedSource,
+        _context: &ProjectContext,
+    ) -> Vec<crate::analyzer::Diagnostic> {
         let mut diagnostics = Vec::new();
         let mut var_types = HashMap::new();
 

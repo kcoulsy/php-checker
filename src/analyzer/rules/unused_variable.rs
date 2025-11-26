@@ -1,5 +1,6 @@
 use super::DiagnosticRule;
 use super::helpers::{diagnostic_for_node, is_definition, variable_name_text};
+use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::Node;
@@ -17,7 +18,11 @@ impl DiagnosticRule for UnusedVariableRule {
         "unused-variable"
     }
 
-    fn run(&self, parsed: &parser::ParsedSource) -> Vec<crate::analyzer::Diagnostic> {
+    fn run(
+        &self,
+        parsed: &parser::ParsedSource,
+        _context: &ProjectContext,
+    ) -> Vec<crate::analyzer::Diagnostic> {
         let mut visitor = UnusedVariableVisitor::new(parsed);
         visitor.visit(parsed.tree.root_node());
         visitor.emit()

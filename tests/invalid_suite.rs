@@ -1,8 +1,10 @@
-use std::{fs, path::Path};
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use php_checker::analyzer::{Analyzer, Diagnostic};
+use php_checker::analyzer::{Analyzer, Diagnostic, collect_php_files};
 
 fn diagnostic_summary(diag: &Diagnostic) -> String {
     format!("{}: {}", diag.severity, diag.message)
@@ -22,24 +24,26 @@ fn expect_lines(path: &Path) -> Result<Vec<String>> {
 #[test]
 fn invalid_fixtures_match_expectations() -> Result<()> {
     let invalid_dir = Path::new("tests/invalid");
-    let entries = fs::read_dir(invalid_dir)?;
+    let mut analyzer = Analyzer::new()?;
+    let php_files = collect_php_files(invalid_dir)?;
+    let diagnostics = analyzer.analyse_root(invalid_dir)?;
 
-    for entry in entries {
-        let path = entry?.path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("php") {
-            continue;
-        }
+    let mut by_file: HashMap<PathBuf, Vec<String>> = HashMap::new();
+    for diag in diagnostics {
+        by_file
+            .entry(diag.file.clone())
+            .or_default()
+            .push(diagnostic_summary(&diag));
+    }
 
+    for path in php_files {
         let expect_path = path.with_extension("expect");
         if !expect_path.exists() {
             continue;
         }
 
         let expect = expect_lines(&expect_path)?;
-
-        let mut analyzer = Analyzer::new()?;
-        let diagnostics = analyzer.analyse_file(&path)?;
-        let actual: Vec<String> = diagnostics.iter().map(diagnostic_summary).collect();
+        let actual = by_file.remove(&path).unwrap_or_default();
 
         assert_eq!(
             expect,

@@ -1,3 +1,4 @@
+use super::project::ProjectContext;
 use crate::analyzer::parser;
 
 pub mod array_key_not_defined;
@@ -25,5 +26,9 @@ pub use unused_variable::UnusedVariableRule;
 
 pub trait DiagnosticRule {
     fn name(&self) -> &str;
-    fn run(&self, parsed: &parser::ParsedSource) -> Vec<super::Diagnostic>;
+    fn run(
+        &self,
+        parsed: &parser::ParsedSource,
+        context: &ProjectContext,
+    ) -> Vec<super::Diagnostic>;
 }
