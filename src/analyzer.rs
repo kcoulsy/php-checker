@@ -193,6 +193,7 @@ impl Analyzer {
             Box::new(rules::UnreachableCodeRule::new()),
             Box::new(rules::UnusedVariableRule::new()),
             Box::new(rules::UnusedUseRule::new()),
+            Box::new(rules::InvalidThisRule::new()),
         ];
 
         Ok(Self { parser, rules })

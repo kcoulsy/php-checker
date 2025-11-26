@@ -1,0 +1,3 @@
+error: $this cannot be used outside of class scope
+error: $this cannot be used in static context
+
