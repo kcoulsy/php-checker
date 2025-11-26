@@ -184,7 +184,7 @@ pub fn is_definition(node: Node) -> bool {
     if let Some(parent) = node.parent() {
         match parent.kind() {
             "assignment_expression" => parent.named_child(0).map_or(false, |left| left == node),
-            "simple_parameter" | "variadic_parameter" => true,
+            "simple_parameter" | "variadic_parameter" | "property_promotion_parameter" => true,
             _ => false,
         }
     } else {

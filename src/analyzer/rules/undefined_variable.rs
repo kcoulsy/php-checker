@@ -54,6 +54,19 @@ impl<'a> ScopeVisitor<'a> {
 
         if node.kind() == "variable_name" {
             if let Some(name) = self.variable_name_text(node) {
+                if name == "this" {
+                    // $this is implicitly defined inside class scopes.
+                    self.define_variable(name.clone());
+                    return;
+                }
+
+                if let Some(parent) = node.parent() {
+                    if parent.kind() == "property_promotion_parameter" {
+                        self.define_variable(name);
+                        return;
+                    }
+                }
+
                 if self.is_definition(node) {
                     self.define_variable(name);
                 } else if !self.is_defined(&name) {

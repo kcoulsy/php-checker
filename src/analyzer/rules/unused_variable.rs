@@ -90,6 +90,11 @@ impl<'a> UnusedVariableVisitor<'a> {
 
 fn is_parameter_definition(node: Node) -> bool {
     node.parent()
-        .map(|parent| matches!(parent.kind(), "simple_parameter" | "variadic_parameter"))
+        .map(|parent| {
+            matches!(
+                parent.kind(),
+                "simple_parameter" | "variadic_parameter" | "property_promotion_parameter"
+            )
+        })
         .unwrap_or(false)
 }
