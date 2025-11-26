@@ -5,3 +5,4 @@ pub mod unused_variable;
 
 pub use unused_use::UnusedUseRule;
 pub use unused_variable::UnusedVariableRule;
+
