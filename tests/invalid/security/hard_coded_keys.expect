@@ -1,0 +1,1 @@
+error: potential hard-coded encryption key detected, consider using environment variables or secure key management

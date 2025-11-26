@@ -17,7 +17,7 @@ pub use control_flow::{
     DuplicateSwitchCaseRule, FallthroughRule, ImpossibleComparisonRule, RedundantConditionRule, UnreachableCodeRule, UnreachableStatementRule,
 };
 pub use sanity::{ArrayKeyNotDefinedRule, DuplicateDeclarationRule, UndefinedVariableRule};
-pub use security::{HardCodedCredentialsRule, IncludeUserInputRule, MutatingLiteralRule};
+pub use security::{HardCodedCredentialsRule, HardCodedKeysRule, IncludeUserInputRule, MutatingLiteralRule, WeakHashingRule};
 pub use strict_typing::{
     ConsistentReturnRule, ForceReturnTypeRule, MissingArgumentRule, MissingReturnRule, StrictTypesRule, TypeMismatchRule,
 };

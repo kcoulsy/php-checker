@@ -60,12 +60,6 @@ This document lists the next set of static-analysis rules we want to add so the 
   - Look for duplicate class/interface/trait names across the workspace and warn about redeclarations similar to Psalm/PHPStan.
   - Report duplicate constants or functions even when they only exist in included files.
 
-## Security / validation
-
-- **Cryptographic misuse**
-  - Warn when weak hashing functions (`md5`, `sha1`) are used for password hashing or signing without additional stretching/salting.
-  - Detect cases where encryption keys are hard-coded or reused across multiple files/contexts.
-
 ## Best practices
 
 - **Unused imports / symbols**

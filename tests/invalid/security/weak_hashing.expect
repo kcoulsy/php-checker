@@ -1,0 +1,5 @@
+warning: weak hashing function 'md5' used for password hashing, consider using password_hash() or similar secure alternatives
+warning: weak hashing function 'sha1' used for password hashing, consider using password_hash() or similar secure alternatives
+warning: weak hashing function 'md5' used for password hashing, consider using password_hash() or similar secure alternatives
+warning: weak hashing function 'md5' used for password hashing, consider using password_hash() or similar secure alternatives
+warning: weak hashing function 'sha1' used for password hashing, consider using password_hash() or similar secure alternatives

@@ -322,6 +322,8 @@ impl Analyzer {
             Box::new(rules::StrictTypesRule::new()),
             Box::new(rules::IncludeUserInputRule::new()),
             Box::new(rules::HardCodedCredentialsRule::new()),
+            Box::new(rules::WeakHashingRule::new()),
+            Box::new(rules::HardCodedKeysRule::new()),
         ];
 
         let config = config.unwrap_or_default();
