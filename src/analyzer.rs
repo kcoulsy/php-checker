@@ -196,6 +196,7 @@ impl Analyzer {
             Box::new(rules::InvalidThisRule::new()),
             Box::new(rules::DeprecatedApiRule::new()),
             Box::new(rules::MutatingLiteralRule::new()),
+            Box::new(rules::StrictTypesRule::new()),
         ];
 
         Ok(Self { parser, rules })

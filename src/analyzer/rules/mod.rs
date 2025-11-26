@@ -16,6 +16,7 @@ pub mod undefined_variable;
 pub mod unreachable;
 pub mod unused_use;
 pub mod unused_variable;
+pub mod strict_types;
 
 pub use array_key_not_defined::ArrayKeyNotDefinedRule;
 pub use deprecated_api::DeprecatedApiRule;
@@ -31,6 +32,7 @@ pub use undefined_variable::UndefinedVariableRule;
 pub use unreachable::UnreachableCodeRule;
 pub use unused_use::UnusedUseRule;
 pub use unused_variable::UnusedVariableRule;
+pub use strict_types::StrictTypesRule;
 
 pub trait DiagnosticRule {
     fn name(&self) -> &str;

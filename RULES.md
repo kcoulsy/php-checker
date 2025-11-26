@@ -87,9 +87,6 @@ This document lists the next set of static-analysis rules we want to add so the 
 
 ## Best practices
 
-- **Strict-types encouragement**
-  - Warn when a file mixes strict and non-strict typing conventions or when `declare(strict_types=1)` is absent but the file is otherwise written with strict rules (optional heuristics).
-
 - **Unused imports / symbols**
   - Track `use` statements and warn about aliases that are never resolved, or conversely about symbols referenced without a `use` that could be statically resolved.
 
