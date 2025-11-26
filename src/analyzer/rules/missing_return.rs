@@ -51,12 +51,17 @@ impl DiagnosticRule for MissingReturnRule {
 
             let name_node = node.child_by_field_name("name").unwrap_or(node);
             let name = node_text(name_node, parsed).unwrap_or_else(|| "anonymous".into());
+            let start = name_node.start_position();
+            let row = start.row + 1;
+            let column = start.column + 1;
 
             diagnostics.push(diagnostic_for_node(
                 parsed,
                 name_node,
                 Severity::Error,
-                format!("function {name} is missing a return on some paths"),
+                format!(
+                    "function {name} is missing a return on some paths at {row}:{column}"
+                ),
             ));
         });
 

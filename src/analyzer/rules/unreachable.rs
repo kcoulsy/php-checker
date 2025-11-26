@@ -60,11 +60,16 @@ impl<'a> UnreachableVisitor<'a> {
                 let child = cursor.node();
                 if child.is_named() {
                     if !reachable {
+                        let start = child.start_position();
+                        let row = start.row + 1;
+                        let column = start.column + 1;
                         self.diagnostics.push(diagnostic_for_node(
                             self.parsed,
                             child,
                             Severity::Warning,
-                            "unreachable code after return",
+                            format!(
+                                "unreachable code after return at {row}:{column}"
+                            ),
                         ));
                     }
 

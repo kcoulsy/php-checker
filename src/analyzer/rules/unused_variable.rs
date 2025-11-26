@@ -42,8 +42,11 @@ impl<'a> UnusedVariableVisitor<'a> {
     fn visit(&mut self, node: Node<'a>) {
         if node.kind() == "variable_name" {
             if let Some(name) = variable_name_text(node, self.parsed) {
-                if is_definition(node) {
-                    self.defined.entry(name).or_insert(node);
+                let is_definition = is_definition(node);
+                if is_definition {
+                    if !is_parameter_definition(node) {
+                        self.defined.entry(name).or_insert(node);
+                    }
                 } else {
                     self.used.insert(name);
                 }
@@ -78,4 +81,10 @@ impl<'a> UnusedVariableVisitor<'a> {
             })
             .collect()
     }
+}
+
+fn is_parameter_definition(node: Node) -> bool {
+    node.parent()
+        .map(|parent| matches!(parent.kind(), "simple_parameter" | "variadic_parameter"))
+        .unwrap_or(false)
 }
