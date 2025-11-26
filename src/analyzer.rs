@@ -1,9 +1,11 @@
 pub mod config;
+pub mod fix;
 mod parser;
 mod project;
 mod rules;
 
 use std::{
+    collections::BTreeMap,
     fmt,
     path::{Path, PathBuf},
 };
@@ -259,6 +261,36 @@ impl Analyzer {
         }
 
         Ok(diagnostics)
+    }
+
+    pub fn fix_root(
+        &mut self,
+        root: &Path,
+    ) -> Result<BTreeMap<PathBuf, Vec<fix::TextEdit>>> {
+        let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        let paths = collect_php_files(&canonical_root)?;
+        let mut context = ProjectContext::new();
+
+        for path in paths {
+            let parsed = self.parser.parse_file(&path)?;
+            context.insert(parsed);
+        }
+
+        let mut edits: BTreeMap<PathBuf, Vec<fix::TextEdit>> = BTreeMap::new();
+        for parsed in context.iter() {
+            for rule in &self.rules {
+                let mut rule_edits = rule.fix(parsed, &context);
+                if rule_edits.is_empty() {
+                    continue;
+                }
+                edits
+                    .entry(parsed.path.clone())
+                    .or_default()
+                    .append(&mut rule_edits);
+            }
+        }
+
+        Ok(edits)
     }
 
     fn collect_diagnostics(

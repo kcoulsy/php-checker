@@ -1,5 +1,7 @@
 use php_checker::analyzer;
 use php_checker::analyzer::config::AnalyzerConfig;
+use php_checker::analyzer::fix;
+use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -22,6 +24,12 @@ enum Commands {
     Analyse {
         /// Path to a PHP file or directory containing PHP files.
         path: PathBuf,
+        /// Apply available fixes when diagnostics are emitted.
+        #[arg(long)]
+        fix: bool,
+        /// Preview the fix output without modifying files.
+        #[arg(long, requires = "fix")]
+        dry_run: bool,
     },
 }
 
@@ -29,11 +37,18 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Analyse { path } => run_analysis(path, cli.config),
+        Commands::Analyse { path, fix, dry_run } => {
+            run_analysis(path, cli.config, fix, dry_run)
+        }
     }
 }
 
-fn run_analysis(path: PathBuf, config_path: Option<PathBuf>) -> Result<()> {
+fn run_analysis(
+    path: PathBuf,
+    config_path: Option<PathBuf>,
+    fix: bool,
+    dry_run: bool,
+) -> Result<()> {
     let canonical_path = path
         .canonicalize()
         .with_context(|| format!("failed to access {}", path.display()))?;
@@ -83,6 +98,33 @@ fn run_analysis(path: PathBuf, config_path: Option<PathBuf>) -> Result<()> {
         warning_count,
         duration.as_secs_f64()
     );
+
+    if fix {
+        let fixes = analyzer.fix_root(&canonical_path)?;
+        if fixes.is_empty() {
+            println!("No fixable diagnostics were detected.");
+        } else if dry_run {
+            for (file, edits) in fixes {
+                let source = fs::read_to_string(&file)
+                    .with_context(|| format!("failed to read {}", file.display()))?;
+                let patched = fix::apply_text_edits(&source, &edits);
+                println!("--- {} ---", file.display());
+                print!("{patched}");
+                if !patched.ends_with('\n') {
+                    println!();
+                }
+            }
+        } else {
+            for (file, edits) in fixes {
+                let source = fs::read_to_string(&file)
+                    .with_context(|| format!("failed to read {}", file.display()))?;
+                let patched = fix::apply_text_edits(&source, &edits);
+                fs::write(&file, patched)
+                    .with_context(|| format!("failed to write {}", file.display()))?;
+                println!("Fixed {}", file.display());
+            }
+        }
+    }
 
     Ok(())
 }

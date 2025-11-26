@@ -1,5 +1,8 @@
 cargo run --bin php-checker -- analyse tests/invalid 
+cargo run --bin php-checker -- analyse tests/invalid --fix --dry-run
 cargo test
+
+Use `--fix` to apply code-mod style fixes when rules support it; add `--dry-run` so the CLI only prints the patched contents. The tests compare that dry-run output against `tests/<fixture>.expect.fixed`.
 
 ## Configuration
 

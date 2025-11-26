@@ -22,6 +22,9 @@ pub struct FileScope {
 pub struct UseInfo {
     pub target: String,
     pub span: Span,
+    pub clause_start: usize,
+    pub clause_end: usize,
+    pub declaration_has_multiple_clauses: bool,
 }
 
 #[derive(Clone)]
@@ -130,6 +133,12 @@ fn collect_use_aliases(parsed: &parser::ParsedSource) -> HashMap<String, UseInfo
             return;
         }
 
+        let clause_count = (0..node.named_child_count())
+            .filter_map(|idx| node.named_child(idx))
+            .filter(|child| child.kind() == "namespace_use_clause")
+            .count();
+        let declaration_has_multiple_clauses = clause_count > 1;
+
         for idx in 0..node.named_child_count() {
             if let Some(child) = node.named_child(idx) {
                 if child.kind() != "namespace_use_clause" {
@@ -145,6 +154,9 @@ fn collect_use_aliases(parsed: &parser::ParsedSource) -> HashMap<String, UseInfo
                                     UseInfo {
                                         target: fq_name,
                                         span: span_from_node(alias_node),
+                                        clause_start: child.start_byte(),
+                                        clause_end: child.end_byte(),
+                                        declaration_has_multiple_clauses,
                                     },
                                 );
                             }

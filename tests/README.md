@@ -16,3 +16,5 @@ This directory holds the PHP snippets that the checker will eventually evaluate.
 
 Each file is intentionally minimal to make it easy to shadow or extend with new cases.
 
+- Fixtures can include a `.expect.fixed` sibling that holds the content we expect after running `php-checker --fix --dry-run`. The `fix_suite.rs` test compares that file against the fix engine output to guard automatic edits.
+

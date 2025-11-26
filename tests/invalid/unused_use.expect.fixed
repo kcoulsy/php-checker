@@ -1,0 +1,6 @@
+<?php
+
+use Multi\Service as Svc;
+
+Svc\takesTwo(1);
+
