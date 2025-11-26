@@ -11,6 +11,7 @@ pub mod redundant_condition;
 pub mod type_mismatch;
 pub mod undefined_variable;
 pub mod unreachable;
+pub mod unused_use;
 pub mod unused_variable;
 
 pub use array_key_not_defined::ArrayKeyNotDefinedRule;
@@ -22,6 +23,7 @@ pub use redundant_condition::RedundantConditionRule;
 pub use type_mismatch::TypeMismatchRule;
 pub use undefined_variable::UndefinedVariableRule;
 pub use unreachable::UnreachableCodeRule;
+pub use unused_use::UnusedUseRule;
 pub use unused_variable::UnusedVariableRule;
 
 pub trait DiagnosticRule {

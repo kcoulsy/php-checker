@@ -15,7 +15,13 @@ pub struct ProjectContext {
 pub struct FileScope {
     pub namespace: Option<String>,
     pub functions: Vec<FunctionSymbol>,
-    pub uses: HashMap<String, String>,
+    pub uses: HashMap<String, UseInfo>,
+}
+
+#[derive(Clone)]
+pub struct UseInfo {
+    pub target: String,
+    pub span: Span,
 }
 
 #[derive(Clone)]
@@ -116,7 +122,7 @@ fn collect_namespace(parsed: &parser::ParsedSource) -> Option<String> {
     namespace
 }
 
-fn collect_use_aliases(parsed: &parser::ParsedSource) -> HashMap<String, String> {
+fn collect_use_aliases(parsed: &parser::ParsedSource) -> HashMap<String, UseInfo> {
     let mut uses = HashMap::new();
 
     walk_node(parsed.tree.root_node(), &mut |node| {
@@ -132,9 +138,17 @@ fn collect_use_aliases(parsed: &parser::ParsedSource) -> HashMap<String, String>
 
                 if let Some(qualified) = child_by_kind(child, "qualified_name") {
                     if let Some(fq_name) = node_text(qualified, parsed) {
-                        let alias = alias_from_clause(child, parsed)
-                            .unwrap_or_else(|| last_segment(&fq_name));
-                        uses.insert(alias, fq_name);
+                        if let Some(alias_node) = alias_node_from_clause(child) {
+                            if let Some(alias) = node_text(alias_node, parsed) {
+                                uses.insert(
+                                    alias.clone(),
+                                    UseInfo {
+                                        target: fq_name,
+                                        span: span_from_node(alias_node),
+                                    },
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -144,14 +158,37 @@ fn collect_use_aliases(parsed: &parser::ParsedSource) -> HashMap<String, String>
     uses
 }
 
-fn alias_from_clause(clause: Node, parsed: &parser::ParsedSource) -> Option<String> {
-    child_by_kind(clause, "namespace_aliasing_clause")
-        .and_then(|alias_clause| child_by_kind(alias_clause, "name"))
-        .and_then(|name_node| node_text(name_node, parsed))
+fn alias_node_from_clause<'a>(clause: Node<'a>) -> Option<Node<'a>> {
+    if let Some(alias_clause) = child_by_kind(clause, "namespace_aliasing_clause") {
+        if let Some(alias_name) = child_by_kind(alias_clause, "name") {
+            return Some(alias_name);
+        }
+    }
+
+    if let Some(qualified) = child_by_kind(clause, "qualified_name") {
+        return last_name_in_node(qualified);
+    }
+
+    None
 }
 
-fn last_segment(name: &str) -> String {
-    name.rsplit('\\').next().unwrap_or(name).to_owned()
+fn last_name_in_node<'a>(node: Node<'a>) -> Option<Node<'a>> {
+    let mut last = None;
+    for idx in 0..node.named_child_count() {
+        if let Some(child) = node.named_child(idx) {
+            if child.kind() == "name" {
+                last = Some(child);
+            }
+        }
+    }
+    last
+}
+
+fn span_from_node(node: Node) -> Span {
+    Span {
+        start: node.start_position(),
+        end: node.end_position(),
+    }
 }
 
 fn collect_function_symbols(
@@ -228,11 +265,11 @@ fn candidate_function_names(name: &str, scope: &FileScope) -> Vec<String> {
     if name.starts_with('\\') {
         candidates.push(normalized.to_owned());
     } else {
-        if let Some(target) = scope.uses.get(first) {
+        if let Some(use_info) = scope.uses.get(first) {
             if remainder.is_empty() {
-                candidates.push(target.clone());
+                candidates.push(use_info.target.clone());
             } else {
-                candidates.push(format!("{target}\\{remainder}"));
+                candidates.push(format!("{}\\{}", use_info.target, remainder));
             }
         }
 

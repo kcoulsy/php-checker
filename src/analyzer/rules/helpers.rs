@@ -60,6 +60,40 @@ pub fn diagnostic_for_node(
     )
 }
 
+pub fn diagnostic_for_span(
+    parsed: &parser::ParsedSource,
+    span: Span,
+    severity: Severity,
+    message: impl Into<String>,
+) -> Diagnostic {
+    let snippet_before = span
+        .start
+        .row
+        .checked_sub(1)
+        .and_then(|row| line_at(parsed.source.as_str(), row));
+
+    let snippet_line = line_at(parsed.source.as_str(), span.start.row);
+    let snippet_after = line_at(parsed.source.as_str(), span.start.row + 1);
+    let caret_col = Some(span.start.column);
+    let caret_len = if span.start.row == span.end.row {
+        span.end.column.saturating_sub(span.start.column).max(1)
+    } else {
+        1
+    };
+
+    Diagnostic::with_span(
+        parsed.path.clone(),
+        severity,
+        message,
+        span,
+        snippet_before,
+        snippet_line,
+        snippet_after,
+        caret_col,
+        caret_len,
+    )
+}
+
 pub fn line_at(source: &str, row: usize) -> Option<String> {
     source.lines().nth(row).map(ToOwned::to_owned)
 }
