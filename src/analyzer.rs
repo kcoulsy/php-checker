@@ -97,12 +97,17 @@ impl fmt::Display for Diagnostic {
         const RESET: &str = "\x1b[0m";
         const DIM: &str = "\x1b[2m";
         const BOLD_RED: &str = "\x1b[1;31m";
-        const GREEN: &str = "\x1b[32m";
+        const BOLD_YELLOW: &str = "\x1b[1;33m";
+        const BLUE: &str = "\x1b[34m";
 
+        let severity_color = match self.severity {
+            Severity::Warning | Severity::Info => BOLD_YELLOW,
+            _ => BOLD_RED,
+        };
         writeln!(
             f,
             "{}{}{}: {}",
-            BOLD_RED, self.severity, RESET, self.message
+            severity_color, self.severity, RESET, self.message
         )?;
 
         if let Some(span) = &self.span {
@@ -113,28 +118,37 @@ impl fmt::Display for Diagnostic {
                 span.start.row + 1,
                 span.start.column + 1
             )?;
-            writeln!(f, "  |")?;
+            writeln!(f, "{BLUE}    |{RESET}")?;
+            let prefix_line =
+                |line_num: usize| format!("{BLUE}{:>3}{RESET} {BLUE}|{RESET}", line_num);
+            let blank_prefix = format!("{BLUE}    |{RESET}");
 
             if let Some(line_before) = &self.snippet_before {
-                writeln!(f, "{:>3} | {}{}{}", span.start.row, DIM, line_before, RESET)?;
+                writeln!(
+                    f,
+                    "{} {}{}{}",
+                    prefix_line(span.start.row),
+                    DIM,
+                    line_before,
+                    RESET
+                )?;
             }
 
             if let Some(line) = &self.snippet_line {
-                writeln!(
-                    f,
-                    "{:>3} | {}{}{}",
-                    span.start.row + 1,
-                    BOLD_RED,
-                    line,
-                    RESET
-                )?;
+                writeln!(f, "{} {}", prefix_line(span.start.row + 1), line)?;
 
                 let caret_col = self.caret_col.unwrap_or(0);
+                let caret_color = match self.severity {
+                    Severity::Warning => BOLD_YELLOW,
+                    _ => BOLD_RED,
+                };
+
                 writeln!(
                     f,
-                    "  | {}{}{}{}",
+                    "{} {}{}{}{}",
+                    blank_prefix,
                     " ".repeat(caret_col),
-                    GREEN,
+                    caret_color,
                     "^".repeat(self.caret_len),
                     RESET
                 )?;
@@ -143,8 +157,8 @@ impl fmt::Display for Diagnostic {
             if let Some(line_after) = &self.snippet_after {
                 writeln!(
                     f,
-                    "{:>3} | {}{}{}",
-                    span.start.row + 2,
+                    "{} {}{}{}",
+                    prefix_line(span.start.row + 2),
                     DIM,
                     line_after,
                     RESET
