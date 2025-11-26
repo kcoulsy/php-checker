@@ -59,9 +59,7 @@ impl DiagnosticRule for MissingReturnRule {
                 parsed,
                 name_node,
                 Severity::Error,
-                format!(
-                    "function {name} is missing a return on some paths at {row}:{column}"
-                ),
+                format!("function {name} is missing a return on some paths at {row}:{column}"),
             ));
         });
 

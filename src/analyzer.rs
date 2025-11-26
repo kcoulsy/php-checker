@@ -167,6 +167,7 @@ impl Analyzer {
         let parser = Box::new(parser::TreeSitterPhpParser::new()?);
         let rules: Vec<Box<dyn rules::DiagnosticRule>> = vec![
             Box::new(rules::UndefinedVariableRule::new()),
+            Box::new(rules::ArrayKeyNotDefinedRule::new()),
             Box::new(rules::MissingReturnRule::new()),
             Box::new(rules::MissingArgumentRule::new()),
             Box::new(rules::TypeMismatchRule::new()),

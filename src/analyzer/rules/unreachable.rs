@@ -67,9 +67,7 @@ impl<'a> UnreachableVisitor<'a> {
                             self.parsed,
                             child,
                             Severity::Warning,
-                            format!(
-                                "unreachable code after return at {row}:{column}"
-                            ),
+                            format!("unreachable code after return at {row}:{column}"),
                         ));
                     }
 
