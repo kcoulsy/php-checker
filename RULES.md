@@ -40,10 +40,6 @@ This document lists the next set of static-analysis rules we want to add so the 
   - Expand the missing-return rule to differentiate between nullable/union return types and `yield`, ensuring that every declared type path terminates with an appropriate value.
   - Warn about `return` statements that never execute due to preceding guards.
 
-- **Switch/match exhaustiveness**
-  - Verify that `switch`/`match` statements handle every case implied by the selector (especially enums or literal sets) and warn about missing `default`/catch-all branches.
-  - Flag `break`/`return` statements that are impossible because a previous `case` already handles every condition.
-
 ## API misuse
 
 - **Method/property existence**
@@ -63,10 +59,6 @@ This document lists the next set of static-analysis rules we want to add so the 
 - **Duplicate declarations**
   - Look for duplicate class/interface/trait names across the workspace and warn about redeclarations similar to Psalm/PHPStan.
   - Report duplicate constants or functions even when they only exist in included files.
-
-- **Switch/case anomalies**
-  - Warn about `switch` statements where cases fall through without an explicit comment, and about repeated literal cases.
-  - Detect `match` arms that mirror previous arms without differences.
 
 ## Security / validation
 

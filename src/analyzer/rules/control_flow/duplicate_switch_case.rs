@@ -63,6 +63,7 @@ impl<'a> DuplicateSwitchVisitor<'a> {
 
         let mut seen = HashSet::new();
         let mut cursor = block.walk();
+
         if cursor.goto_first_child() {
             loop {
                 let child = cursor.node();
@@ -107,3 +108,4 @@ fn literal_case_value(node: Node, parsed: &parser::ParsedSource) -> Option<(Stri
         _ => None,
     }
 }
+
