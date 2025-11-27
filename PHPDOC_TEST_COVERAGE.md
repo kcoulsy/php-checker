@@ -65,16 +65,14 @@ All PHPDoc tests are located in `tests/future/strict_typing/` and organized by t
 | `04_wrong_inline_var.php` | Wrong inline @var type | Future |
 | `05_reassignment_violation.php` | Type violation on reassignment | Future |
 | `06_generic_array.php` | Generic array types | Future |
-| `07_var_union_matches.php` | Union type matches (`int\|string`) | Future* |
+| `07_var_union_matches.php` | Union type matches (`int\|string`) | ✅ Pass |
 | `08_var_union_conflict.php` | Union type conflict | Error |
-
-*Note: `07_var_union_matches.php` will currently fail because we need union type compatibility checking (a value of type `int` should be compatible with `int|string`).
 
 **Type Coverage:**
 - ✅ Simple types (int, string, bool, float)
 - ✅ Object types (User, Admin, etc.)
 - ✅ Nullable types (?string)
-- ✅ Union types (int|string) - partial (conflicts work, compatibility doesn't)
+- ✅ Union types (int|string) - **FULLY WORKING** with compatibility checking
 - ❌ Array types (int[], array<K,V>)
 - ❌ Generic types (@template)
 - ❌ Inline @var in functions
@@ -87,14 +85,15 @@ All PHPDoc tests are located in `tests/future/strict_typing/` and organized by t
 | Simple (int, string) | ✅ | ✅ | ✅ | ✅ | Fully implemented |
 | Object (User) | ✅ | ✅ | ✅ | ✅ | Fully implemented |
 | Nullable (?string) | ✅ | ✅ | ✅ | ✅ | Fully implemented |
-| Union (int\|string) | ✅ | ✅ | ✅ | ⚠️ | Needs compatibility checking |
+| Union (int\|string) | ✅ | ✅ | ✅ | ✅ | ✅ **COMPLETE** with compatibility checking |
+| Native Union (int\|bool) | ✅ | N/A | ✅ | N/A | PHP 8.0+ union types supported |
 | Array (int[]) | ✅ | ❌ | ❌ | ❌ | Parsed but not validated |
 | Generic (array<K,V>) | ✅ | ❌ | ❌ | ❌ | Parsed but not validated |
 | Template (@template T) | ❌ | ❌ | ❌ | ❌ | Not implemented |
 
 ## Test Scenarios by Implementation Status
 
-### ✅ Currently Working (16 scenarios)
+### ✅ Currently Working (17 scenarios)
 
 **@param:**
 - Object type matching and conflicts (2)
@@ -106,15 +105,12 @@ All PHPDoc tests are located in `tests/future/strict_typing/` and organized by t
 - Object type conflicts (1)
 - Nullable type matching and conflicts (3)
 - Union type matching and conflicts (2)
+- Native union type matching and conflicts (2)
 
 **@var:**
 - Basic property type matching and conflicts (2)
+- Union type matching (1) ✅ **NEW**
 - Union type conflicts (1)
-
-### 🚧 Needs Union Type Compatibility (1 scenario)
-
-**@var:**
-- Union type matching (requires: `int` ⊆ `int|string` compatibility check)
 
 ### ⏳ Future Implementation (7 scenarios)
 
@@ -127,10 +123,12 @@ All PHPDoc tests are located in `tests/future/strict_typing/` and organized by t
 
 ### High Priority
 
-1. **Union Type Compatibility Checking**
-   - Implement: `int` should be compatible with `int|string`
-   - Update: All three validation rules to support subset checking
-   - Impact: Makes union types fully functional
+1. ✅ **Union Type Compatibility Checking** - **COMPLETE**
+   - ✅ Implement: `int` should be compatible with `int|string`
+   - ✅ Update: All three validation rules to support subset checking
+   - ✅ Impact: Makes union types fully functional
+   - ✅ Added: `is_type_compatible()` helper function in helpers.rs
+   - ✅ Added: Native PHP 8.0+ union type support in @return rule
 
 2. **Array Element Validation**
    - Implement: `User[]` validation

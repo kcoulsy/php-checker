@@ -153,6 +153,14 @@ fn type_hint_to_string(hint: &TypeHint) -> String {
             .map(type_hint_to_string)
             .collect::<Vec<_>>()
             .join("|"),
+        TypeHint::Array(inner) => format!("{}[]", type_hint_to_string(inner)),
+        TypeHint::GenericArray { key, value } => {
+            format!(
+                "array<{}, {}>",
+                type_hint_to_string(key),
+                type_hint_to_string(value)
+            )
+        }
         TypeHint::Unknown => "unknown".to_string(),
     }
 }

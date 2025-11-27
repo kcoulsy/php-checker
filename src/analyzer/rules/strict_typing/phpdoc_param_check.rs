@@ -41,6 +41,22 @@ impl PhpDocParamCheckRule {
                     Some(TypeHint::Union(hints))
                 }
             }
+            TypeExpression::Array(inner) => {
+                // Convert array type (e.g., int[], User[])
+                Self::type_expression_to_hint(inner).map(|t| TypeHint::Array(Box::new(t)))
+            }
+            TypeExpression::Generic { base, params } => {
+                // Handle generic array types (e.g., array<string, int>)
+                if base == "array" && params.len() == 2 {
+                    let key_hint = Self::type_expression_to_hint(&params[0])?;
+                    let value_hint = Self::type_expression_to_hint(&params[1])?;
+                    return Some(TypeHint::GenericArray {
+                        key: Box::new(key_hint),
+                        value: Box::new(value_hint),
+                    });
+                }
+                None
+            }
             _ => None,
         }
     }
@@ -78,6 +94,14 @@ impl PhpDocParamCheckRule {
                 .map(|t| Self::type_hint_to_string(t))
                 .collect::<Vec<_>>()
                 .join("|"),
+            TypeHint::Array(inner) => format!("{}[]", Self::type_hint_to_string(inner)),
+            TypeHint::GenericArray { key, value } => {
+                format!(
+                    "array<{}, {}>",
+                    Self::type_hint_to_string(key),
+                    Self::type_hint_to_string(value)
+                )
+            }
             TypeHint::Unknown => "unknown".to_string(),
         }
     }

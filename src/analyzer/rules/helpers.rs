@@ -12,6 +12,11 @@ pub enum TypeHint {
     Object(String),          // Stores the class/interface name
     Nullable(Box<TypeHint>), // Wraps another type to make it nullable
     Union(Vec<TypeHint>),    // Union of multiple types (int|string)
+    Array(Box<TypeHint>),    // Array of a specific type (int[], User[])
+    GenericArray {           // Associative array with key/value types (array<string, int>)
+        key: Box<TypeHint>,
+        value: Box<TypeHint>,
+    },
     Unknown,
 }
 
@@ -336,6 +341,142 @@ pub fn literal_type(node: Node) -> Option<TypeHint> {
     }
 }
 
+/// Infer the type of a node, including variables with known assignments
+/// Returns Some(TypeHint::Unknown) if the node is a variable but type cannot be determined
+/// Returns None if the node is not a value expression
+pub fn infer_type(node: Node, parsed: &parser::ParsedSource) -> Option<TypeHint> {
+    // First try to get literal type
+    if let Some(lit_type) = literal_type(node) {
+        return Some(lit_type);
+    }
+
+    // If it's a variable, try to infer from context
+    if node.kind() == "variable_name" {
+        // For now, we'll collect variable assignments in the same scope
+        // and try to infer the type
+        if let Some(var_name) = variable_name_text(node, parsed) {
+            // Look backwards in the tree to find assignments to this variable
+            if let Some(inferred) = infer_variable_type(&var_name, node, parsed) {
+                return Some(inferred);
+            }
+        }
+        // If we can't infer, return Unknown to signal we should warn
+        return Some(TypeHint::Unknown);
+    }
+
+    None
+}
+
+/// Try to infer a variable's type by looking at @var declarations or assignments
+fn infer_variable_type(
+    var_name: &str,
+    _context_node: Node,
+    parsed: &parser::ParsedSource,
+) -> Option<TypeHint> {
+    use crate::analyzer::phpdoc::{extract_phpdoc_for_node, TypeExpression};
+
+    let root = parsed.tree.root_node();
+    let mut found_type = None;
+
+    // First priority: Look for @var declarations
+    walk_node(root, &mut |node| {
+        if found_type.is_some() {
+            return; // Already found
+        }
+
+        // Check for inline @var on expression_statement
+        if node.kind() == "expression_statement" {
+            if let Some(phpdoc) = extract_phpdoc_for_node(node, parsed) {
+                if let Some(var_tag) = phpdoc.var_tag {
+                    // Check if the @var is for our variable
+                    if let Some(declared_name) = &var_tag.name {
+                        if declared_name == var_name {
+                            // Found a @var declaration for this variable
+                            found_type = type_expression_to_hint(&var_tag.type_expr);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // If we found a @var declaration, use it
+    if found_type.is_some() {
+        return found_type;
+    }
+
+    // Second priority: Infer from literal assignment
+    walk_node(root, &mut |node| {
+        if found_type.is_some() {
+            return; // Already found
+        }
+
+        if node.kind() == "assignment_expression" {
+            // Check if this assigns to our variable
+            if let Some(left) = node.child_by_field_name("left") {
+                if left.kind() == "variable_name" {
+                    if let Some(name) = variable_name_text(left, parsed) {
+                        if name == var_name {
+                            // Found an assignment to our variable
+                            if let Some(right) = node.child_by_field_name("right") {
+                                if let Some(typ) = literal_type(right) {
+                                    found_type = Some(typ);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    found_type
+}
+
+/// Helper to convert TypeExpression to TypeHint (reused from phpdoc rules)
+fn type_expression_to_hint(expr: &crate::analyzer::phpdoc::TypeExpression) -> Option<TypeHint> {
+    use crate::analyzer::phpdoc::TypeExpression;
+
+    match expr {
+        TypeExpression::Simple(s) => match s.as_str() {
+            "int" | "integer" => Some(TypeHint::Int),
+            "string" => Some(TypeHint::String),
+            "bool" | "boolean" => Some(TypeHint::Bool),
+            "float" | "double" => Some(TypeHint::Float),
+            _ => Some(TypeHint::Object(s.clone())),
+        },
+        TypeExpression::Nullable(inner) => {
+            type_expression_to_hint(inner).map(|t| TypeHint::Nullable(Box::new(t)))
+        }
+        TypeExpression::Union(types) => {
+            let hints: Vec<TypeHint> = types
+                .iter()
+                .filter_map(|t| type_expression_to_hint(t))
+                .collect();
+            if hints.is_empty() {
+                None
+            } else {
+                Some(TypeHint::Union(hints))
+            }
+        }
+        TypeExpression::Array(inner) => {
+            type_expression_to_hint(inner).map(|t| TypeHint::Array(Box::new(t)))
+        }
+        TypeExpression::Generic { base, params } => {
+            if base == "array" && params.len() == 2 {
+                let key_hint = type_expression_to_hint(&params[0])?;
+                let value_hint = type_expression_to_hint(&params[1])?;
+                return Some(TypeHint::GenericArray {
+                    key: Box::new(key_hint),
+                    value: Box::new(value_hint),
+                });
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 fn literal_kind(node: Node) -> Option<LiteralKind> {
     match node.kind() {
         "string" | "encapsed_string" => Some(LiteralKind::String),
@@ -350,6 +491,44 @@ pub fn newline_for_source(source: &str) -> &'static str {
     } else {
         "\n"
     }
+}
+
+/// Extract array elements from an array_creation_expression node
+/// Returns a vector of (element_node, element_type) pairs
+pub fn extract_array_elements<'a>(
+    array_node: Node<'a>,
+    parsed: &parser::ParsedSource,
+) -> Vec<(Node<'a>, Option<TypeHint>)> {
+    let mut elements = Vec::new();
+    let mut cursor = array_node.walk();
+
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.kind() == "array_element_initializer" {
+                // For simple arrays like [1, 2, 3], the value is a direct child
+                // For associative arrays like ["key" => value], we need the value after =>
+                let value_node = if let Some(pair_node) = child_by_kind(child, "pair") {
+                    // Associative array - get the value (second element of pair)
+                    pair_node.named_child(1)
+                } else {
+                    // Simple array - the element itself is the value
+                    child.named_child(0)
+                };
+
+                if let Some(val_node) = value_node {
+                    let elem_type = infer_type(val_node, parsed);
+                    elements.push((val_node, elem_type));
+                }
+            }
+
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+
+    elements
 }
 
 /// Check if actual_type is compatible with (a subset of) expected_type
@@ -400,6 +579,30 @@ pub fn is_type_compatible(actual: &TypeHint, expected: &TypeHint) -> bool {
 
             // Nullable is equivalent to Union with null, so handle that case
             // But we don't have a Null type, so we can't check for it here
+            false
+        }
+
+        // If expected is an array, actual must be an array with compatible element type
+        TypeHint::Array(expected_elem) => {
+            if let TypeHint::Array(actual_elem) = actual {
+                return is_type_compatible(actual_elem, expected_elem);
+            }
+            false
+        }
+
+        // If expected is a generic array, actual must have compatible key/value types
+        TypeHint::GenericArray {
+            key: expected_key,
+            value: expected_value,
+        } => {
+            if let TypeHint::GenericArray {
+                key: actual_key,
+                value: actual_value,
+            } = actual
+            {
+                return is_type_compatible(actual_key, expected_key)
+                    && is_type_compatible(actual_value, expected_value);
+            }
             false
         }
 

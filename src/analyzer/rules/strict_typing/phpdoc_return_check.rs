@@ -218,6 +218,14 @@ fn type_hint_to_string(hint: &TypeHint) -> String {
             .map(type_hint_to_string)
             .collect::<Vec<_>>()
             .join("|"),
+        TypeHint::Array(inner) => format!("{}[]", type_hint_to_string(inner)),
+        TypeHint::GenericArray { key, value } => {
+            format!(
+                "array<{}, {}>",
+                type_hint_to_string(key),
+                type_hint_to_string(value)
+            )
+        }
         TypeHint::Unknown => "unknown".to_string(),
     }
 }
@@ -244,6 +252,22 @@ fn type_expression_to_hint(expr: &TypeExpression) -> Option<TypeHint> {
             } else {
                 Some(TypeHint::Union(hints))
             }
+        }
+        TypeExpression::Array(inner) => {
+            // Convert array type (e.g., int[], User[])
+            type_expression_to_hint(inner).map(|t| TypeHint::Array(Box::new(t)))
+        }
+        TypeExpression::Generic { base, params } => {
+            // Handle generic array types (e.g., array<string, int>)
+            if base == "array" && params.len() == 2 {
+                let key_hint = type_expression_to_hint(&params[0])?;
+                let value_hint = type_expression_to_hint(&params[1])?;
+                return Some(TypeHint::GenericArray {
+                    key: Box::new(key_hint),
+                    value: Box::new(value_hint),
+                });
+            }
+            None
         }
         _ => None,
     }

@@ -124,14 +124,13 @@ function getAdmin(): Admin {  // ✅ ERROR: @return type 'User' conflicts with n
 **Complexity:** High
 **Value:** Very High
 
-#### Native PHP 8.0+ Union Type Support
-- Parse native union types (`int|string`) from PHP 8.0+
-- Handle union type compatibility checking
-- Support mixed union and nullable types
+#### ✅ Native PHP 8.0+ Union Type Support
+- ✅ Parse native union types (`int|string`) from PHP 8.0+
+- ✅ Handle union type compatibility checking
+- ✅ Support mixed union and nullable types
 
-**Complexity:** Medium
-**Value:** High
-**Note:** PHPDoc union types are working. Need to handle native PHP union types.
+**Status:** ✅ **COMPLETE**
+**Note:** Native union types are now fully supported in @return checks with compatibility validation.
 
 ### Medium Priority
 
@@ -214,6 +213,7 @@ function getAdmin(): Admin {  // ✅ ERROR: @return type 'User' conflicts with n
 | Generic (`array<K,V>`) | ✅ | ❌ | ❌ | ❌ |
 | Union (`int\|string`) | ✅ | ✅ | ✅ | ✅ |
 | **Object (`User`)** | ✅ | ✅ | ✅ | ✅ |
+| **Native Union (`int\|bool`)** | ✅ | N/A | N/A | ✅ |
 | Template (`@template T`) | ❌ | ❌ | ❌ | ❌ |
 
 ### Tag Support Matrix
@@ -353,13 +353,16 @@ See `ADD_RULE.md` and use `phpdoc_param_check.rs` as a template:
 
 **Current:**
 - ✅ 3/9 core PHPDoc tags validated (@var, @param, @return)
-- ✅ 4/7 type syntaxes fully supported (simple, object, nullable, union)
+- ✅ 5/7 type syntaxes fully supported (simple, object, nullable, union, native union)
 - ✅ Foundation complete and tested
-- ✅ All existing tests still passing (27 total)
+- ✅ All existing tests still passing (26 unit tests)
 - ✅ Test configuration system implemented
 - ✅ Object type support for all 3 implemented tags
 - ✅ Nullable type support (`?string`) for all 3 tags
-- ✅ Union type support (`int|string`) for all 3 tags
+- ✅ Union type support (`int|string`) for all 3 tags with compatibility checking
+- ✅ **NEW:** Type compatibility checking - `int` is compatible with `int|string`
+- ✅ **NEW:** Native PHP 8.0+ union types (`int|bool`) in @return validation
+- ✅ **NEW:** Float literal support
 
 **Target (Full PHPStan Parity):**
 - ⏳ 9/9 core PHPDoc tags
@@ -380,10 +383,11 @@ See `ADD_RULE.md` and use `phpdoc_param_check.rs` as a template:
 **Challenges:**
 - Tree-sitter AST navigation requires careful node traversal
 - TypeHint enum changed from Copy to Clone (contains String for object types)
-- Need better type compatibility checking (subtyping)
+- ✅ ~~Need better type compatibility checking (subtyping)~~ **SOLVED:** Implemented `is_type_compatible` function
 - Return value validation requires control flow analysis
+- Native PHP union types require special parsing logic
 
 **Next Quick Wins:**
 1. Array element validation (high value, high effort)
-2. Union type validation (high value, medium effort)
-3. Nullable type validation (medium value, low effort)
+2. ✅ ~~Union type validation (high value, medium effort)~~ **COMPLETE**
+3. Return value validation - check actual return statements match @return type (high value, medium-high effort)

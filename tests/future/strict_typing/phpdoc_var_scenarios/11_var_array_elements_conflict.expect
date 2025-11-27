@@ -1,0 +1,3 @@
+error: Array element type 'string' conflicts with expected element type 'int' for int[] at 7:33
+error: Array element type 'int' conflicts with expected element type 'string' for string[] at 13:34
+error: Array element type 'string' conflicts with expected element type 'bool' for bool[] at 19:31
