@@ -3,7 +3,9 @@
     "allow": [
       "Bash(cargo run:*)",
       "Bash(cargo test:*)",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "Bash(tee:*)",
+      "Bash(cargo clean:*)"
     ],
     "deny": [],
     "ask": []

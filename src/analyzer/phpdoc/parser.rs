@@ -99,15 +99,20 @@ impl PhpDocParser {
     /// Parse @param tag
     /// Format: @param Type $name [description]
     fn parse_param_tag(value: &str) -> Option<ParamTag> {
-        let parts: Vec<&str> = value.splitn(3, char::is_whitespace).collect();
-        if parts.len() < 2 {
-            return None;
-        }
+        let value = value.trim();
 
-        let type_str = parts[0];
-        let var_name = parts[1].trim_start_matches('$');
+        // Find where the variable name starts (marked by $)
+        let dollar_pos = value.find('$')?;
+
+        // Type is everything before the $, trimmed
+        let type_str = value[..dollar_pos].trim();
+        let var_part = &value[dollar_pos..];
 
         let type_expr = Self::parse_type_expression(type_str)?;
+
+        // Extract variable name (first token after $)
+        let parts: Vec<&str> = var_part.splitn(2, char::is_whitespace).collect();
+        let var_name = parts[0].trim_start_matches('$');
 
         Some(ParamTag {
             name: var_name.to_string(),
@@ -132,17 +137,26 @@ impl PhpDocParser {
     /// Parse @var tag
     /// Format: @var Type [$name] [description]
     fn parse_var_tag(value: &str) -> Option<VarTag> {
-        let parts: Vec<&str> = value.splitn(3, char::is_whitespace).collect();
-        if parts.is_empty() {
-            return None;
-        }
+        let value = value.trim();
 
-        let type_str = parts[0];
+        // Find where the variable name starts (marked by $)
+        // The type is everything before that, or the whole string if no variable name
+        let (type_str, rest) = if let Some(dollar_pos) = value.find('$') {
+            // Type is everything before the $, trimmed
+            let type_part = value[..dollar_pos].trim();
+            let var_part = &value[dollar_pos..];
+            (type_part, Some(var_part))
+        } else {
+            // No variable name, entire string is the type
+            (value, None)
+        };
+
         let type_expr = Self::parse_type_expression(type_str)?;
 
-        let name = parts.get(1).and_then(|s| {
-            if s.starts_with('$') {
-                Some(s.trim_start_matches('$').to_string())
+        let name = rest.and_then(|s| {
+            let parts: Vec<&str> = s.splitn(2, char::is_whitespace).collect();
+            if !parts.is_empty() && parts[0].starts_with('$') {
+                Some(parts[0].trim_start_matches('$').to_string())
             } else {
                 None
             }
@@ -194,10 +208,19 @@ impl PhpDocParser {
             return Some(TypeExpression::Array(Box::new(inner_expr)));
         }
 
+        // Handle shaped arrays: array{name: string, age: int}
+        if type_str.starts_with("array{") && type_str.ends_with('}') {
+            let fields_str = &type_str[6..type_str.len() - 1]; // Remove "array{" and "}"
+            let fields = Self::parse_shaped_array_fields(fields_str)?;
+            return Some(TypeExpression::ShapedArray(fields));
+        }
+
         // Handle generic types: array<Type>, array<Key, Value>
         if let Some((base, params_str)) = Self::split_generic(type_str) {
-            let params: Option<Vec<_>> = params_str
-                .split(',')
+            // Split parameters respecting nested braces and angle brackets
+            let param_strs = Self::split_params(params_str);
+            let params: Option<Vec<_>> = param_strs
+                .iter()
                 .map(|p| Self::parse_type_expression(p.trim()))
                 .collect();
 
@@ -232,6 +255,66 @@ impl PhpDocParser {
         let params = &type_str[start + 1..end];
 
         Some((base, params))
+    }
+
+    /// Parse shaped array fields: "name: string, age: int" -> [("name", Simple("string")), ("age", Simple("int"))]
+    fn parse_shaped_array_fields(fields_str: &str) -> Option<Vec<(String, TypeExpression)>> {
+        let field_strs = Self::split_params(fields_str);
+        let mut fields = Vec::new();
+
+        for field_str in field_strs {
+            // Split on colon: "name: string" -> ["name", "string"]
+            let parts: Vec<&str> = field_str.splitn(2, ':').collect();
+            if parts.len() != 2 {
+                return None;
+            }
+
+            let field_name = parts[0].trim().to_string();
+            let type_str = parts[1].trim();
+            let type_expr = Self::parse_type_expression(type_str)?;
+
+            fields.push((field_name, type_expr));
+        }
+
+        Some(fields)
+    }
+
+    /// Split comma-separated parameters while respecting nesting
+    /// Example: "int, array{name: string, age: int}" -> ["int", "array{name: string, age: int}"]
+    fn split_params(params_str: &str) -> Vec<String> {
+        let mut result = Vec::new();
+        let mut current = String::new();
+        let mut depth = 0; // Track nesting depth for {} and <>
+
+        for ch in params_str.chars() {
+            match ch {
+                '{' | '<' | '(' | '[' => {
+                    depth += 1;
+                    current.push(ch);
+                }
+                '}' | '>' | ')' | ']' => {
+                    depth -= 1;
+                    current.push(ch);
+                }
+                ',' if depth == 0 => {
+                    // Top-level comma - split here
+                    if !current.trim().is_empty() {
+                        result.push(current.trim().to_string());
+                    }
+                    current.clear();
+                }
+                _ => {
+                    current.push(ch);
+                }
+            }
+        }
+
+        // Don't forget the last parameter
+        if !current.trim().is_empty() {
+            result.push(current.trim().to_string());
+        }
+
+        result
     }
 }
 
@@ -296,5 +379,45 @@ mod tests {
         let doc = PhpDocParser::parse(comment).unwrap();
         assert_eq!(doc.params.len(), 2);
         assert!(doc.return_tag.is_some());
+    }
+
+    #[test]
+    fn test_split_params_with_nesting() {
+        // Simple case
+        let params = PhpDocParser::split_params("int, string");
+        assert_eq!(params, vec!["int", "string"]);
+
+        // Nested braces
+        let params = PhpDocParser::split_params("int, array{name: string, age: int}");
+        assert_eq!(params, vec!["int", "array{name: string, age: int}"]);
+
+        // Nested angle brackets
+        let params = PhpDocParser::split_params("string, array<int, User>");
+        assert_eq!(params, vec!["string", "array<int, User>"]);
+
+        // Complex nesting
+        let params = PhpDocParser::split_params("int, array<string, array{id: int, data: string}>");
+        assert_eq!(params, vec!["int", "array<string, array{id: int, data: string}>"]);
+    }
+
+    #[test]
+    fn test_parse_var_tag_with_generic_array() {
+        let comment = r#"/**
+         * @var array<string, int>
+         */"#;
+
+        let doc = PhpDocParser::parse(comment).unwrap();
+        assert!(doc.var_tag.is_some());
+        let var_tag = doc.var_tag.unwrap();
+        eprintln!("DEBUG: Parsed type_expr = {:?}", var_tag.type_expr);
+        match var_tag.type_expr {
+            TypeExpression::Generic { base, params } => {
+                assert_eq!(base, "array");
+                assert_eq!(params.len(), 2);
+                assert!(matches!(params[0], TypeExpression::Simple(ref s) if s == "string"));
+                assert!(matches!(params[1], TypeExpression::Simple(ref s) if s == "int"));
+            }
+            _ => panic!("Expected Generic type for array<string, int>, got: {:?}", var_tag.type_expr),
+        }
     }
 }

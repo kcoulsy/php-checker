@@ -1,0 +1,3 @@
+error: Array element type 'string' conflicts with expected element type 'int' for @return type 'int[]'
+error: Array element type 'int' conflicts with expected element type 'string' for @return type 'string[]'
+error: Array element type 'string' conflicts with expected element type 'bool' for @return type 'bool[]'

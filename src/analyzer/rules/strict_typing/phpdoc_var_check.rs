@@ -1,7 +1,8 @@
 use super::DiagnosticRule;
 use super::helpers::{
-    TypeHint, child_by_kind, diagnostic_for_node, extract_array_elements, is_type_compatible,
-    literal_type, variable_name_text, walk_node,
+    TypeHint, child_by_kind, diagnostic_for_node, extract_array_elements,
+    extract_array_key_value_pairs, is_type_compatible, literal_type, node_text,
+    variable_name_text, walk_node,
 };
 use crate::analyzer::phpdoc::{TypeExpression, extract_phpdoc_for_node};
 use crate::analyzer::project::ProjectContext;
@@ -34,6 +35,16 @@ impl PhpDocVarCheckRule {
             TypeExpression::Nullable(inner) => {
                 format!("?{}", Self::type_expression_to_string(inner))
             }
+            TypeExpression::ShapedArray(fields) => {
+                let fields_str = fields
+                    .iter()
+                    .map(|(name, type_expr)| {
+                        format!("{}: {}", name, Self::type_expression_to_string(type_expr))
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("array{{{}}}", fields_str)
+            }
             TypeExpression::Mixed => "mixed".to_string(),
             TypeExpression::Void => "void".to_string(),
             TypeExpression::Never => "never".to_string(),
@@ -60,6 +71,16 @@ impl PhpDocVarCheckRule {
                     Self::type_hint_to_string(key),
                     Self::type_hint_to_string(value)
                 )
+            }
+            TypeHint::ShapedArray(fields) => {
+                let fields_str = fields
+                    .iter()
+                    .map(|(name, hint)| {
+                        format!("{}: {}", name, Self::type_hint_to_string(hint))
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("array{{{}}}", fields_str)
             }
             TypeHint::Unknown => "unknown".to_string(),
         }
@@ -108,6 +129,16 @@ impl PhpDocVarCheckRule {
                 }
                 None
             }
+            TypeExpression::ShapedArray(fields) => {
+                // Convert shaped array to TypeHint
+                let hint_fields: Option<Vec<_>> = fields
+                    .iter()
+                    .map(|(name, type_expr)| {
+                        Self::type_expression_to_hint(type_expr).map(|hint| (name.clone(), hint))
+                    })
+                    .collect();
+                hint_fields.map(TypeHint::ShapedArray)
+            }
             _ => None,
         }
     }
@@ -120,7 +151,39 @@ impl PhpDocVarCheckRule {
         parsed: &parser::ParsedSource,
         diagnostics: &mut Vec<crate::analyzer::Diagnostic>,
     ) {
-        // Extract the expected element type from array types
+        eprintln!("DEBUG check_array_elements: expected_type = {:?}", expected_type);
+        // Check if this is a shaped array type
+        if let TypeHint::ShapedArray(expected_fields) = expected_type {
+            eprintln!("DEBUG: Calling check_shaped_array_elements");
+            Self::check_shaped_array_elements(
+                array_node,
+                expected_fields,
+                type_expr,
+                parsed,
+                diagnostics,
+            );
+            return;
+        }
+
+        // Check if this is a generic array type
+        if let TypeHint::GenericArray {
+            key: expected_key,
+            value: expected_value,
+        } = expected_type
+        {
+            eprintln!("DEBUG: Calling check_generic_array_elements");
+            Self::check_generic_array_elements(
+                array_node,
+                expected_key,
+                expected_value,
+                type_expr,
+                parsed,
+                diagnostics,
+            );
+            return;
+        }
+
+        // Extract the expected element type from simple array types
         let expected_elem_type = match expected_type {
             TypeHint::Array(elem_type) => Some(elem_type.as_ref()),
             _ => None,
@@ -166,6 +229,182 @@ impl PhpDocVarCheckRule {
             }
         }
     }
+
+    /// Check generic array (array<K, V>) key-value pairs
+    fn check_generic_array_elements(
+        array_node: tree_sitter::Node,
+        expected_key: &TypeHint,
+        expected_value: &TypeHint,
+        type_expr: &TypeExpression,
+        parsed: &parser::ParsedSource,
+        diagnostics: &mut Vec<crate::analyzer::Diagnostic>,
+    ) {
+        eprintln!("DEBUG check_generic_array_elements: expected_key={:?}, expected_value={:?}", expected_key, expected_value);
+        let pairs = extract_array_key_value_pairs(array_node, parsed);
+        eprintln!("DEBUG: Got {} pairs from extract_array_key_value_pairs", pairs.len());
+        let array_type_name = Self::type_expression_to_string(type_expr);
+
+        for (key_node_opt, key_type_opt, value_node, value_type_opt) in pairs {
+            eprintln!("DEBUG: Pair - key_type={:?}, value_type={:?}", key_type_opt, value_type_opt);
+            // Check key type
+            if let Some(key_type) = key_type_opt {
+                if key_type == TypeHint::Unknown {
+                    if let Some(key_node) = key_node_opt {
+                        diagnostics.push(diagnostic_for_node(
+                            parsed,
+                            key_node,
+                            Severity::Error,
+                            format!(
+                                "Cannot infer type of array key for {}; expected key type '{}'",
+                                array_type_name,
+                                Self::type_hint_to_string(expected_key)
+                            ),
+                        ));
+                    }
+                } else if !is_type_compatible(&key_type, expected_key) {
+                    if let Some(key_node) = key_node_opt {
+                        diagnostics.push(diagnostic_for_node(
+                            parsed,
+                            key_node,
+                            Severity::Error,
+                            format!(
+                                "Array key type '{}' conflicts with expected key type '{}' for {}",
+                                Self::type_hint_to_string(&key_type),
+                                Self::type_hint_to_string(expected_key),
+                                array_type_name
+                            ),
+                        ));
+                    }
+                }
+            }
+
+            // Check value type
+            if let Some(value_type) = value_type_opt {
+                if value_type == TypeHint::Unknown {
+                    diagnostics.push(diagnostic_for_node(
+                        parsed,
+                        value_node,
+                        Severity::Error,
+                        format!(
+                            "Cannot infer type of array value for {}; expected value type '{}'",
+                            array_type_name,
+                            Self::type_hint_to_string(expected_value)
+                        ),
+                    ));
+                } else if !is_type_compatible(&value_type, expected_value) {
+                    diagnostics.push(diagnostic_for_node(
+                        parsed,
+                        value_node,
+                        Severity::Error,
+                        format!(
+                            "Array value type '{}' conflicts with expected value type '{}' for {}",
+                            Self::type_hint_to_string(&value_type),
+                            Self::type_hint_to_string(expected_value),
+                            array_type_name
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Check shaped array (array{name: string, age: int}) fields
+    /// Validates that each field exists and has the correct type, order-independent
+    fn check_shaped_array_elements(
+        array_node: tree_sitter::Node,
+        expected_fields: &[(String, TypeHint)],
+        type_expr: &TypeExpression,
+        parsed: &parser::ParsedSource,
+        diagnostics: &mut Vec<crate::analyzer::Diagnostic>,
+    ) {
+        eprintln!("DEBUG check_shaped_array_elements: expected {} fields", expected_fields.len());
+        let array_type_name = Self::type_expression_to_string(type_expr);
+
+        // Extract all key-value pairs from the array
+        let pairs = extract_array_key_value_pairs(array_node, parsed);
+
+        // Build a map of actual field names to their values for easy lookup
+        use std::collections::HashMap;
+        let mut actual_fields: HashMap<String, (tree_sitter::Node, Option<TypeHint>)> = HashMap::new();
+
+        for (key_node_opt, _key_type_opt, value_node, value_type_opt) in pairs {
+            if let Some(key_node) = key_node_opt {
+                // Extract the field name from the key (should be a string)
+                if let Some(field_name) = node_text(key_node, parsed) {
+                    // Remove quotes from string keys
+                    let field_name = field_name.trim_matches('"').trim_matches('\'');
+                    actual_fields.insert(field_name.to_string(), (value_node, value_type_opt));
+                }
+            }
+        }
+
+        eprintln!("DEBUG: Found {} actual fields", actual_fields.len());
+
+        // Check each expected field
+        for (expected_name, expected_type) in expected_fields {
+            eprintln!("DEBUG: Checking field '{}'", expected_name);
+
+            if let Some((value_node, value_type_opt)) = actual_fields.get(expected_name) {
+                // Field exists, check its type
+                if let Some(value_type) = value_type_opt {
+                    if *value_type == TypeHint::Unknown {
+                        diagnostics.push(diagnostic_for_node(
+                            parsed,
+                            *value_node,
+                            Severity::Error,
+                            format!(
+                                "Cannot infer type of field '{}' in {}; expected type '{}'",
+                                expected_name,
+                                array_type_name,
+                                Self::type_hint_to_string(expected_type)
+                            ),
+                        ));
+                    } else if !is_type_compatible(value_type, expected_type) {
+                        diagnostics.push(diagnostic_for_node(
+                            parsed,
+                            *value_node,
+                            Severity::Error,
+                            format!(
+                                "Field '{}' has type '{}' but expected type '{}' in {}",
+                                expected_name,
+                                Self::type_hint_to_string(value_type),
+                                Self::type_hint_to_string(expected_type),
+                                array_type_name
+                            ),
+                        ));
+                    }
+                }
+            } else {
+                // Field is missing
+                diagnostics.push(diagnostic_for_node(
+                    parsed,
+                    array_node,
+                    Severity::Error,
+                    format!(
+                        "Missing required field '{}' in {}",
+                        expected_name,
+                        array_type_name
+                    ),
+                ));
+            }
+        }
+
+        // Check for unexpected fields
+        for (actual_name, (value_node, _)) in &actual_fields {
+            if !expected_fields.iter().any(|(name, _)| name == actual_name) {
+                diagnostics.push(diagnostic_for_node(
+                    parsed,
+                    *value_node,
+                    Severity::Error,
+                    format!(
+                        "Unexpected field '{}' in {}",
+                        actual_name,
+                        array_type_name
+                    ),
+                ));
+            }
+        }
+    }
 }
 
 impl DiagnosticRule for PhpDocVarCheckRule {
@@ -179,6 +418,7 @@ impl DiagnosticRule for PhpDocVarCheckRule {
         _context: &ProjectContext,
     ) -> Vec<crate::analyzer::Diagnostic> {
         let mut diagnostics = Vec::new();
+        eprintln!("DEBUG phpdoc_var_check: Starting run");
 
         // Check class properties with @var tags
         walk_node(parsed.tree.root_node(), &mut |node| {
@@ -189,6 +429,7 @@ impl DiagnosticRule for PhpDocVarCheckRule {
             // Extract @var PHPDoc
             if let Some(phpdoc) = extract_phpdoc_for_node(node, parsed) {
                 if let Some(var_tag) = phpdoc.var_tag {
+                    eprintln!("DEBUG: Found @var tag: {:?}", var_tag);
                     // Find the property initializer
                     for i in 0..node.named_child_count() {
                         if let Some(child) = node.named_child(i) {
@@ -199,8 +440,10 @@ impl DiagnosticRule for PhpDocVarCheckRule {
                                 {
                                     // Get the value node (skip the = sign)
                                     if let Some(value_node) = initializer.named_child(0) {
+                                        eprintln!("DEBUG: value_node kind = {}", value_node.kind());
                                         // Check if it's an array and validate elements
                                         if value_node.kind() == "array_creation_expression" {
+                                            eprintln!("DEBUG: Is array_creation_expression, checking elements");
                                             if let Some(expected_type) =
                                                 Self::type_expression_to_hint(&var_tag.type_expr)
                                             {

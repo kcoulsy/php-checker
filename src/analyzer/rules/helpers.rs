@@ -17,6 +17,7 @@ pub enum TypeHint {
         key: Box<TypeHint>,
         value: Box<TypeHint>,
     },
+    ShapedArray(Vec<(String, TypeHint)>), // Shaped array with named fields (array{name: string, age: int})
     Unknown,
 }
 
@@ -332,13 +333,17 @@ pub fn argument_literal_kind<'a>(arg: Node<'a>) -> Option<(LiteralKind, Node<'a>
 }
 
 pub fn literal_type(node: Node) -> Option<TypeHint> {
-    match node.kind() {
+    let result = match node.kind() {
         "string" | "encapsed_string" => Some(TypeHint::String),
         "integer" => Some(TypeHint::Int),
         "boolean" => Some(TypeHint::Bool),
         "float" => Some(TypeHint::Float),
         _ => None,
+    };
+    if result.is_none() {
+        eprintln!("DEBUG literal_type: Unknown node kind '{}' for literal", node.kind());
     }
+    result
 }
 
 /// Infer the type of a node, including variables with known assignments
@@ -348,6 +353,23 @@ pub fn infer_type(node: Node, parsed: &parser::ParsedSource) -> Option<TypeHint>
     // First try to get literal type
     if let Some(lit_type) = literal_type(node) {
         return Some(lit_type);
+    }
+
+    // Check for object creation expression (new User())
+    if node.kind() == "object_creation_expression" {
+        // Get the class name from the object creation
+        if let Some(name_node) = child_by_kind(node, "name") {
+            if let Some(class_name) = node_text(name_node, parsed) {
+                return Some(TypeHint::Object(class_name));
+            }
+        }
+        // Also check for qualified_name (namespaced classes)
+        if let Some(name_node) = child_by_kind(node, "qualified_name") {
+            if let Some(class_name) = node_text(name_node, parsed) {
+                return Some(TypeHint::Object(class_name));
+            }
+        }
+        return Some(TypeHint::Unknown);
     }
 
     // If it's a variable, try to infer from context
@@ -531,6 +553,50 @@ pub fn extract_array_elements<'a>(
     elements
 }
 
+/// Extract key-value pairs from an array_creation_expression node for generic array validation
+/// Returns a vector of (key_node, key_type, value_node, value_type) tuples
+pub fn extract_array_key_value_pairs<'a>(
+    array_node: Node<'a>,
+    parsed: &parser::ParsedSource,
+) -> Vec<(Option<Node<'a>>, Option<TypeHint>, Node<'a>, Option<TypeHint>)> {
+    let mut pairs = Vec::new();
+    let mut cursor = array_node.walk();
+
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.kind() == "array_element_initializer" {
+                // Check number of children to determine if it's a key-value pair or simple element
+                if child.named_child_count() == 2 {
+                    // Associative array ["key" => value]
+                    // tree-sitter PHP represents this with 2 children directly (no "pair" wrapper)
+                    let key_node = child.named_child(0);
+                    let value_node = child.named_child(1);
+
+                    if let (Some(k_node), Some(v_node)) = (key_node, value_node) {
+                        let key_type = infer_type(k_node, parsed);
+                        let value_type = infer_type(v_node, parsed);
+                        pairs.push((Some(k_node), key_type, v_node, value_type));
+                    }
+                } else if child.named_child_count() == 1 {
+                    // Simple array [value] - implicit integer keys
+                    if let Some(val_node) = child.named_child(0) {
+                        let value_type = infer_type(val_node, parsed);
+                        // Implicit integer key
+                        pairs.push((None, Some(TypeHint::Int), val_node, value_type));
+                    }
+                }
+            }
+
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+
+    pairs
+}
+
 /// Check if actual_type is compatible with (a subset of) expected_type
 /// Examples:
 /// - int is compatible with int|string (subset)
@@ -625,3 +691,5 @@ pub fn is_type_compatible(actual: &TypeHint, expected: &TypeHint) -> bool {
         }
     }
 }
+
+ 

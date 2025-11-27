@@ -1,0 +1,72 @@
+warning: unused import: `TypeExpression`
+   --> src\analyzer\rules\helpers.rs:393:60
+    |
+393 |     use crate::analyzer::phpdoc::{extract_phpdoc_for_node, TypeExpression};
+    |                                                            ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `actual_inner`
+   --> src\analyzer\rules\helpers.rs:677:39
+    |
+677 |             if let TypeHint::Nullable(actual_inner) = actual {
+    |                                       ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_actual_inner`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> src\analyzer.rs:411:21
+    |
+411 |                 let mut diags =
+    |                     ----^^^^^
+    |                     |
+    |                     help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `ENCRYPTION_FUNCTIONS` is never used
+  --> src\analyzer\rules\security\hard_coded_keys.rs:15:7
+   |
+15 | const ENCRYPTION_FUNCTIONS: &[&str] = &[
+   |       ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `is_used_as_key` is never used
+   --> src\analyzer\rules\security\hard_coded_keys.rs:120:4
+    |
+120 | fn is_used_as_key(string_node: tree_sitter::Node, parsed: &parser::ParsedSource) -> bool {
+    |    ^^^^^^^^^^^^^^
+
+warning: function `is_encryption_function_call` is never used
+   --> src\analyzer\rules\security\hard_coded_keys.rs:185:4
+    |
+185 | fn is_encryption_function_call(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_argument_index` is never used
+   --> src\analyzer\rules\security\hard_coded_keys.rs:199:4
+    |
+199 | fn get_argument_index(argument: &tree_sitter::Node, arguments: &tree_sitter::Node) -> usize {
+    |    ^^^^^^^^^^^^^^^^^^
+
+warning: function `extract_variable_name` is never used
+   --> src\analyzer\rules\security\hard_coded_keys.rs:210:4
+    |
+210 | fn extract_variable_name(node: tree_sitter::Node, parsed: &parser::ParsedSource) -> Option<String> {
+    |    ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `extract_variable_name_from_declaration` is never used
+   --> src\analyzer\rules\security\hard_coded_keys.rs:224:4
+    |
+224 | fn extract_variable_name_from_declaration(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `php-checker` (lib) generated 9 warnings (run `cargo fix --lib -p php-checker` to apply 2 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.23s
+     Running `target\debug\php-checker.exe analyse test_debug.php`
+Error: failed to access test_debug.php
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+error: process didn't exit successfully: `target\debug\php-checker.exe analyse test_debug.php` (exit code: 1)

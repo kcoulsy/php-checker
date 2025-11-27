@@ -1,0 +1,2 @@
+error: Array element type 'Admin' conflicts with expected element type 'User' for User[]
+error: Array element type 'User' conflicts with expected element type 'Admin' for Admin[]

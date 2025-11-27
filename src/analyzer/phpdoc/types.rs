@@ -19,6 +19,10 @@ pub enum TypeExpression {
     /// Nullable type: ?string
     Nullable(Box<TypeExpression>),
 
+    /// Shaped array type: array{name: string, age: int}
+    /// Uses a Vec instead of HashMap to preserve order in error messages
+    ShapedArray(Vec<(String, TypeExpression)>),
+
     /// Mixed type
     Mixed,
 
@@ -54,6 +58,9 @@ impl TypeExpression {
             }
             TypeExpression::Union(types) => types.iter().any(|t| t.contains_type(type_name)),
             TypeExpression::Nullable(inner) => inner.contains_type(type_name),
+            TypeExpression::ShapedArray(fields) => {
+                fields.iter().any(|(_, t)| t.contains_type(type_name))
+            }
             _ => false,
         }
     }

@@ -226,6 +226,16 @@ fn type_hint_to_string(hint: &TypeHint) -> String {
                 type_hint_to_string(value)
             )
         }
+        TypeHint::ShapedArray(fields) => {
+            let fields_str = fields
+                .iter()
+                .map(|(name, hint)| {
+                    format!("{}: {}", name, type_hint_to_string(hint))
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("array{{{}}}", fields_str)
+        }
         TypeHint::Unknown => "unknown".to_string(),
     }
 }
@@ -291,6 +301,16 @@ fn type_expression_to_string(expr: &TypeExpression) -> String {
             .collect::<Vec<_>>()
             .join("|"),
         TypeExpression::Nullable(inner) => format!("?{}", type_expression_to_string(inner)),
+        TypeExpression::ShapedArray(fields) => {
+            let fields_str = fields
+                .iter()
+                .map(|(name, type_expr)| {
+                    format!("{}: {}", name, type_expression_to_string(type_expr))
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("array{{{}}}", fields_str)
+        }
         TypeExpression::Mixed => "mixed".to_string(),
         TypeExpression::Void => "void".to_string(),
         TypeExpression::Never => "never".to_string(),

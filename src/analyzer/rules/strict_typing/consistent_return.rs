@@ -161,6 +161,16 @@ fn type_hint_to_string(hint: &TypeHint) -> String {
                 type_hint_to_string(value)
             )
         }
+        TypeHint::ShapedArray(fields) => {
+            let fields_str = fields
+                .iter()
+                .map(|(name, hint)| {
+                    format!("{}: {}", name, type_hint_to_string(hint))
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("array{{{}}}", fields_str)
+        }
         TypeHint::Unknown => "unknown".to_string(),
     }
 }
