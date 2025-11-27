@@ -2,6 +2,16 @@ cargo run --bin php-checker -- analyse tests/invalid
 cargo run --bin php-checker -- analyse tests/invalid --fix --dry-run
 cargo test
 
+## Watch mode
+
+Start with a full suite run, then keep watching the files you care about:
+
+```sh
+cargo run --bin php-checker -- watch tests/invalid
+```
+
+The watch command reruns the analyzer on every PHP file that changes (you can still pass `--format json` if you need machine-readable output) and prints diagnostics for just those files after the initial run finishes.
+
 Use `--fix` to apply code-mod style fixes when rules support it; add `--dry-run` so the CLI only prints the patched contents. The tests compare that dry-run output against `tests/<fixture>.expect.fixed`.
 
 ## Configuration

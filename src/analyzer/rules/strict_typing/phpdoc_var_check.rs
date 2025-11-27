@@ -1,5 +1,7 @@
 use super::DiagnosticRule;
-use super::helpers::{TypeHint, child_by_kind, diagnostic_for_node, literal_type, walk_node};
+use super::helpers::{
+    TypeHint, child_by_kind, diagnostic_for_node, literal_type, variable_name_text, walk_node,
+};
 use crate::analyzer::phpdoc::{TypeExpression, extract_phpdoc_for_node};
 use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
@@ -149,6 +151,63 @@ impl DiagnosticRule for PhpDocVarCheckRule {
                             }
                         }
                     }
+                }
+            }
+        });
+
+        // Check inline @var assignments
+        walk_node(parsed.tree.root_node(), &mut |node| {
+            if node.kind() != "expression_statement" {
+                return;
+            }
+
+            let Some(phpdoc) = extract_phpdoc_for_node(node, parsed) else {
+                return;
+            };
+            let Some(var_tag) = phpdoc.var_tag else {
+                return;
+            };
+
+            let Some(assign) = child_by_kind(node, "assignment_expression") else {
+                return;
+            };
+
+            let Some(value_node) = assign.child_by_field_name("right") else {
+                return;
+            };
+
+            let Some(actual_type) = literal_type(value_node) else {
+                return;
+            };
+
+            if let Some(expected_type) = Self::type_expression_to_hint(&var_tag.type_expr) {
+                if let Some(expected_name) = var_tag.name.as_ref() {
+                    if let Some(left_node) = assign.child_by_field_name("left") {
+                        if let Some(variable_name) = variable_name_text(left_node, parsed) {
+                            if &variable_name != expected_name {
+                                return;
+                            }
+                        } else {
+                            return;
+                        }
+                    } else {
+                        return;
+                    }
+                }
+
+                if actual_type != expected_type {
+                    let expected_name_str = Self::type_expression_to_string(&var_tag.type_expr);
+                    let actual_name_str = Self::type_hint_to_string(&actual_type);
+
+                    diagnostics.push(diagnostic_for_node(
+                        parsed,
+                        value_node,
+                        Severity::Error,
+                        format!(
+                            "@var type '{}' conflicts with assigned value type '{}'",
+                            expected_name_str, actual_name_str
+                        ),
+                    ));
                 }
             }
         });
