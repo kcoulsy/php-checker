@@ -331,6 +331,7 @@ pub fn literal_type(node: Node) -> Option<TypeHint> {
         "string" | "encapsed_string" => Some(TypeHint::String),
         "integer" => Some(TypeHint::Int),
         "boolean" => Some(TypeHint::Bool),
+        "float" => Some(TypeHint::Float),
         _ => None,
     }
 }
@@ -348,5 +349,76 @@ pub fn newline_for_source(source: &str) -> &'static str {
         "\r\n"
     } else {
         "\n"
+    }
+}
+
+/// Check if actual_type is compatible with (a subset of) expected_type
+/// Examples:
+/// - int is compatible with int|string (subset)
+/// - int is compatible with int (exact match)
+/// - ?string is compatible with string|null (equivalent)
+/// - string is compatible with ?string (subset)
+pub fn is_type_compatible(actual: &TypeHint, expected: &TypeHint) -> bool {
+    // Exact match
+    if actual == expected {
+        return true;
+    }
+
+    match expected {
+        // If expected is a union, actual must be compatible with at least one member
+        TypeHint::Union(expected_types) => {
+            // Check if actual matches any of the union members
+            for expected_member in expected_types {
+                if is_type_compatible(actual, expected_member) {
+                    return true;
+                }
+            }
+
+            // If actual is also a union, all its members must be in expected union
+            if let TypeHint::Union(actual_types) = actual {
+                return actual_types.iter().all(|actual_member| {
+                    expected_types.iter().any(|expected_member| {
+                        is_type_compatible(actual_member, expected_member)
+                    })
+                });
+            }
+
+            false
+        }
+
+        // If expected is nullable, actual can be the inner type or null
+        TypeHint::Nullable(expected_inner) => {
+            // Check if actual matches the inner type
+            if is_type_compatible(actual, expected_inner) {
+                return true;
+            }
+
+            // Check if actual is also nullable with compatible inner type
+            if let TypeHint::Nullable(actual_inner) = actual {
+                return is_type_compatible(actual_inner, expected_inner);
+            }
+
+            // Nullable is equivalent to Union with null, so handle that case
+            // But we don't have a Null type, so we can't check for it here
+            false
+        }
+
+        // If actual is a union but expected is not, check if all actual types match expected
+        _ => {
+            if let TypeHint::Union(actual_types) = actual {
+                // All members of actual union must match the expected type
+                // This is generally false unless expected is Unknown or very generic
+                return actual_types.iter().all(|t| is_type_compatible(t, expected));
+            }
+
+            // If actual is nullable, unwrap and check inner type
+            if let TypeHint::Nullable(actual_inner) = actual {
+                // Nullable type is only compatible with non-nullable if they match exactly
+                // which we already checked above, so this is false
+                return false;
+            }
+
+            false
+        }
     }
 }

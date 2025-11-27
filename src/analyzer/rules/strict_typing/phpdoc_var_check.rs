@@ -1,6 +1,7 @@
 use super::DiagnosticRule;
 use super::helpers::{
-    TypeHint, child_by_kind, diagnostic_for_node, literal_type, variable_name_text, walk_node,
+    TypeHint, child_by_kind, diagnostic_for_node, is_type_compatible, literal_type,
+    variable_name_text, walk_node,
 };
 use crate::analyzer::phpdoc::{TypeExpression, extract_phpdoc_for_node};
 use crate::analyzer::project::ProjectContext;
@@ -125,8 +126,8 @@ impl DiagnosticRule for PhpDocVarCheckRule {
                                             if let Some(expected_type) =
                                                 Self::type_expression_to_hint(&var_tag.type_expr)
                                             {
-                                                // Check if types match
-                                                if actual_type != expected_type {
+                                                // Check if types are compatible
+                                                if !is_type_compatible(&actual_type, &expected_type) {
                                                     let expected_name =
                                                         Self::type_expression_to_string(
                                                             &var_tag.type_expr,
@@ -195,7 +196,7 @@ impl DiagnosticRule for PhpDocVarCheckRule {
                     }
                 }
 
-                if actual_type != expected_type {
+                if !is_type_compatible(&actual_type, &expected_type) {
                     let expected_name_str = Self::type_expression_to_string(&var_tag.type_expr);
                     let actual_name_str = Self::type_hint_to_string(&actual_type);
 

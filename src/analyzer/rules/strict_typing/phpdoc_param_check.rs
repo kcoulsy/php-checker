@@ -1,6 +1,7 @@
 use super::DiagnosticRule;
 use super::helpers::{
-    TypeHint, child_by_kind, diagnostic_for_node, node_text, type_hint_from_parameter, walk_node,
+    TypeHint, child_by_kind, diagnostic_for_node, is_type_compatible, node_text,
+    type_hint_from_parameter, walk_node,
 };
 use crate::analyzer::phpdoc::{TypeExpression, extract_phpdoc_for_node};
 use crate::analyzer::project::ProjectContext;
@@ -169,9 +170,14 @@ impl DiagnosticRule for PhpDocParamCheckRule {
                                     let phpdoc_hint =
                                         Self::type_expression_to_hint(expected_type_expr);
 
-                                    // Check for conflict
+                                    // Check for conflict using compatibility checking
                                     if let Some(phpdoc) = phpdoc_hint {
-                                        if native_hint != phpdoc {
+                                        // Native type and PHPDoc type should match exactly or be compatible
+                                        // For @param, we want stricter checking: they should match exactly
+                                        // because PHPDoc shouldn't contradict the native hint
+                                        if !is_type_compatible(&native_hint, &phpdoc)
+                                            && !is_type_compatible(&phpdoc, &native_hint)
+                                        {
                                             let expected_name =
                                                 Self::type_expression_to_string(expected_type_expr);
 
