@@ -49,7 +49,7 @@ impl DiagnosticRule for InvalidThisRule {
                         }
                         parent = p;
                     }
-                    "class_declaration" => {
+                    "class_declaration" | "enum_declaration" => {
                         found_class = true;
                         break;
                     }

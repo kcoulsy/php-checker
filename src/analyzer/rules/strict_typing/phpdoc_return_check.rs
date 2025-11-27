@@ -65,29 +65,49 @@ impl DiagnosticRule for PhpDocReturnCheckRule {
                 return;
             };
 
+            // Check if it's an optional type (nullable)
+            let is_optional = child_by_kind(native_type_node, "optional_type").is_some();
+
             // Extract the actual type from return_type node (it may have a child like primitive_type)
-            let actual_type_node = child_by_kind(native_type_node, "primitive_type")
-                .or_else(|| child_by_kind(native_type_node, "named_type"))
-                .or_else(|| child_by_kind(native_type_node, "optional_type"))
-                .unwrap_or(native_type_node);
+            let actual_type_node = if is_optional {
+                // For optional types, get the inner type
+                let optional_node = child_by_kind(native_type_node, "optional_type").unwrap();
+                child_by_kind(optional_node, "primitive_type")
+                    .or_else(|| child_by_kind(optional_node, "named_type"))
+                    .unwrap_or(optional_node)
+            } else {
+                child_by_kind(native_type_node, "primitive_type")
+                    .or_else(|| child_by_kind(native_type_node, "named_type"))
+                    .unwrap_or(native_type_node)
+            };
 
             let Some(native_type_text) = node_text(actual_type_node, parsed) else {
                 return;
             };
 
-            // Convert native type to TypeHint
-            let native_hint = text_to_type_hint(&native_type_text);
+            // Convert native type to TypeHint, wrapping in Nullable if needed
+            let native_hint = if is_optional {
+                text_to_type_hint(&native_type_text).map(|t| TypeHint::Nullable(Box::new(t)))
+            } else {
+                text_to_type_hint(&native_type_text)
+            };
 
             // Convert PHPDoc type to TypeHint
             let phpdoc_hint = type_expression_to_hint(&return_tag.type_expr);
 
             // Check for conflicts
-            if let (Some(native), Some(phpdoc)) = (native_hint, phpdoc_hint) {
-                if native != phpdoc {
+            if let (Some(native), Some(phpdoc)) = (native_hint.clone(), phpdoc_hint) {
+                if !is_compatible(&native, &return_tag.type_expr) {
+                    let native_type_display = if is_optional {
+                        format!("?{}", native_type_text)
+                    } else {
+                        native_type_text.clone()
+                    };
+
                     let message = format!(
                         "@return type '{}' conflicts with native return type hint '{}'",
                         type_expression_to_string(&return_tag.type_expr),
-                        native_type_text
+                        native_type_display
                     );
 
                     diagnostics.push(diagnostic_for_node(
@@ -102,6 +122,31 @@ impl DiagnosticRule for PhpDocReturnCheckRule {
 
         diagnostics
     }
+}
+
+/// Check if PHPDoc type is compatible with native type hint
+/// PHPDoc can be more specific than native type (e.g., array<int, string> vs array)
+fn is_compatible(native: &TypeHint, phpdoc_expr: &TypeExpression) -> bool {
+    // If we have a generic/array PHPDoc type and native is just "array", that's compatible
+    // (PHPDoc is being more specific)
+    if matches!(native, TypeHint::Object(name) if name == "array") {
+        match phpdoc_expr {
+            // array<...> is compatible with array
+            TypeExpression::Generic { base, .. } if base == "array" => return true,
+            // Type[] is compatible with array
+            TypeExpression::Array(_) => return true,
+            // array (simple) is compatible with array
+            TypeExpression::Simple(s) if s == "array" => return true,
+            _ => {}
+        }
+    }
+
+    // For other cases, convert PHPDoc to TypeHint and compare
+    if let Some(phpdoc_hint) = type_expression_to_hint(phpdoc_expr) {
+        return native == &phpdoc_hint;
+    }
+
+    false
 }
 
 fn text_to_type_hint(text: &str) -> Option<TypeHint> {
@@ -128,6 +173,15 @@ fn type_expression_to_hint(expr: &TypeExpression) -> Option<TypeHint> {
         TypeExpression::Nullable(inner) => {
             // Wrap the inner type in Nullable
             type_expression_to_hint(inner).map(|t| TypeHint::Nullable(Box::new(t)))
+        }
+        TypeExpression::Union(types) => {
+            // Convert each type in the union
+            let hints: Vec<TypeHint> = types.iter().filter_map(type_expression_to_hint).collect();
+            if hints.is_empty() {
+                None
+            } else {
+                Some(TypeHint::Union(hints))
+            }
         }
         _ => None,
     }

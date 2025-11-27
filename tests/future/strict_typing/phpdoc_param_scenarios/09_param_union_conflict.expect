@@ -1,0 +1,3 @@
+error: @param type 'int|string' conflicts with native type hint 'int|bool' for parameter $value at 7:26
+error: @param type 'int|string' conflicts with native type hint 'string|float' for parameter $value at 14:30
+error: @param type 'User|Admin' conflicts with native type hint 'User|Guest' for parameter $obj at 21:30

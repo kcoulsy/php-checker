@@ -1,8 +1,10 @@
 use super::DiagnosticRule;
-use super::helpers::{child_by_kind, diagnostic_for_node, node_text, type_hint_from_parameter, walk_node, TypeHint};
-use crate::analyzer::phpdoc::{extract_phpdoc_for_node, TypeExpression};
+use super::helpers::{
+    TypeHint, child_by_kind, diagnostic_for_node, node_text, type_hint_from_parameter, walk_node,
+};
+use crate::analyzer::phpdoc::{TypeExpression, extract_phpdoc_for_node};
 use crate::analyzer::project::ProjectContext;
-use crate::analyzer::{parser, Severity};
+use crate::analyzer::{Severity, parser};
 
 pub struct PhpDocParamCheckRule;
 
@@ -22,13 +24,31 @@ impl PhpDocParamCheckRule {
                 // Anything else is treated as an object type (class/interface name)
                 _ => Some(TypeHint::Object(s.clone())),
             },
-            TypeExpression::Nullable(inner) => Self::type_expression_to_hint(inner),
+            TypeExpression::Nullable(inner) => {
+                // Wrap the inner type in Nullable
+                Self::type_expression_to_hint(inner).map(|t| TypeHint::Nullable(Box::new(t)))
+            }
+            TypeExpression::Union(types) => {
+                // Convert each type in the union
+                let hints: Vec<TypeHint> = types
+                    .iter()
+                    .filter_map(|t| Self::type_expression_to_hint(t))
+                    .collect();
+                if hints.is_empty() {
+                    None
+                } else {
+                    Some(TypeHint::Union(hints))
+                }
+            }
             _ => None,
         }
     }
 
     /// Get parameter name from a parameter node
-    fn get_param_name(param_node: tree_sitter::Node, parsed: &parser::ParsedSource) -> Option<String> {
+    fn get_param_name(
+        param_node: tree_sitter::Node,
+        parsed: &parser::ParsedSource,
+    ) -> Option<String> {
         // Look for variable_name node
         for i in 0..param_node.named_child_count() {
             if let Some(child) = param_node.named_child(i) {
@@ -52,7 +72,38 @@ impl PhpDocParamCheckRule {
             TypeHint::Nullable(inner) => {
                 format!("?{}", Self::type_hint_to_string(inner.as_ref()))
             }
+            TypeHint::Union(types) => types
+                .iter()
+                .map(|t| Self::type_hint_to_string(t))
+                .collect::<Vec<_>>()
+                .join("|"),
             TypeHint::Unknown => "unknown".to_string(),
+        }
+    }
+
+    fn type_expression_to_string(expr: &TypeExpression) -> String {
+        match expr {
+            TypeExpression::Simple(s) => s.clone(),
+            TypeExpression::Array(inner) => format!("{}[]", Self::type_expression_to_string(inner)),
+            TypeExpression::Generic { base, params } => {
+                let params_str = params
+                    .iter()
+                    .map(|p| Self::type_expression_to_string(p))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}<{}>", base, params_str)
+            }
+            TypeExpression::Union(types) => types
+                .iter()
+                .map(|t| Self::type_expression_to_string(t))
+                .collect::<Vec<_>>()
+                .join("|"),
+            TypeExpression::Nullable(inner) => {
+                format!("?{}", Self::type_expression_to_string(inner))
+            }
+            TypeExpression::Mixed => "mixed".to_string(),
+            TypeExpression::Void => "void".to_string(),
+            TypeExpression::Never => "never".to_string(),
         }
     }
 }
@@ -94,7 +145,12 @@ impl DiagnosticRule for PhpDocParamCheckRule {
                     // Check each parameter
                     for i in 0..formal_params.named_child_count() {
                         if let Some(param_node) = formal_params.named_child(i) {
-                            if !matches!(param_node.kind(), "simple_parameter" | "variadic_parameter" | "property_promotion_parameter") {
+                            if !matches!(
+                                param_node.kind(),
+                                "simple_parameter"
+                                    | "variadic_parameter"
+                                    | "property_promotion_parameter"
+                            ) {
                                 continue;
                             }
 
@@ -110,22 +166,25 @@ impl DiagnosticRule for PhpDocParamCheckRule {
                                         continue;
                                     }
 
-                                    let phpdoc_hint = Self::type_expression_to_hint(expected_type_expr);
+                                    let phpdoc_hint =
+                                        Self::type_expression_to_hint(expected_type_expr);
 
                                     // Check for conflict
                                     if let Some(phpdoc) = phpdoc_hint {
                                         if native_hint != phpdoc {
-                                            let expected_name = match expected_type_expr {
-                                                TypeExpression::Simple(s) => s.clone(),
-                                                _ => "unknown".to_string(),
-                                            };
+                                            let expected_name =
+                                                Self::type_expression_to_string(expected_type_expr);
 
-                                            let native_type_str = Self::type_hint_to_string(&native_hint);
+                                            let native_type_str =
+                                                Self::type_hint_to_string(&native_hint);
 
                                             // Find the type node for error reporting
-                                            let type_node = child_by_kind(param_node, "primitive_type")
-                                                .or_else(|| child_by_kind(param_node, "named_type"))
-                                                .unwrap_or(param_node);
+                                            let type_node =
+                                                child_by_kind(param_node, "primitive_type")
+                                                    .or_else(|| {
+                                                        child_by_kind(param_node, "named_type")
+                                                    })
+                                                    .unwrap_or(param_node);
 
                                             diagnostics.push(diagnostic_for_node(
                                                 parsed,

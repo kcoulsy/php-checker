@@ -11,6 +11,49 @@ impl PhpDocVarCheckRule {
         Self
     }
 
+    fn type_expression_to_string(expr: &TypeExpression) -> String {
+        match expr {
+            TypeExpression::Simple(s) => s.clone(),
+            TypeExpression::Array(inner) => format!("{}[]", Self::type_expression_to_string(inner)),
+            TypeExpression::Generic { base, params } => {
+                let params_str = params
+                    .iter()
+                    .map(|p| Self::type_expression_to_string(p))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}<{}>", base, params_str)
+            }
+            TypeExpression::Union(types) => types
+                .iter()
+                .map(|t| Self::type_expression_to_string(t))
+                .collect::<Vec<_>>()
+                .join("|"),
+            TypeExpression::Nullable(inner) => {
+                format!("?{}", Self::type_expression_to_string(inner))
+            }
+            TypeExpression::Mixed => "mixed".to_string(),
+            TypeExpression::Void => "void".to_string(),
+            TypeExpression::Never => "never".to_string(),
+        }
+    }
+
+    fn type_hint_to_string(hint: &TypeHint) -> String {
+        match hint {
+            TypeHint::Int => "int".to_string(),
+            TypeHint::String => "string".to_string(),
+            TypeHint::Bool => "bool".to_string(),
+            TypeHint::Float => "float".to_string(),
+            TypeHint::Object(name) => name.clone(),
+            TypeHint::Nullable(inner) => format!("?{}", Self::type_hint_to_string(inner)),
+            TypeHint::Union(types) => types
+                .iter()
+                .map(|t| Self::type_hint_to_string(t))
+                .collect::<Vec<_>>()
+                .join("|"),
+            TypeHint::Unknown => "unknown".to_string(),
+        }
+    }
+
     /// Convert PHPDoc TypeExpression to our internal TypeHint for simple cases
     fn type_expression_to_hint(expr: &TypeExpression) -> Option<TypeHint> {
         match expr {
@@ -25,6 +68,18 @@ impl PhpDocVarCheckRule {
             TypeExpression::Nullable(inner) => {
                 // Wrap the inner type in Nullable
                 Self::type_expression_to_hint(inner).map(|t| TypeHint::Nullable(Box::new(t)))
+            }
+            TypeExpression::Union(types) => {
+                // Convert each type in the union
+                let hints: Vec<TypeHint> = types
+                    .iter()
+                    .filter_map(|t| Self::type_expression_to_hint(t))
+                    .collect();
+                if hints.is_empty() {
+                    None
+                } else {
+                    Some(TypeHint::Union(hints))
+                }
             }
             _ => None,
         }
@@ -70,28 +125,12 @@ impl DiagnosticRule for PhpDocVarCheckRule {
                                             {
                                                 // Check if types match
                                                 if actual_type != expected_type {
-                                                    let expected_name = match &var_tag.type_expr {
-                                                        TypeExpression::Simple(s) => s.clone(),
-                                                        TypeExpression::Nullable(inner) => {
-                                                            if let TypeExpression::Simple(s) =
-                                                                inner.as_ref()
-                                                            {
-                                                                format!("?{}", s)
-                                                            } else {
-                                                                "unknown".to_string()
-                                                            }
-                                                        }
-                                                        _ => "unknown".to_string(),
-                                                    };
-
-                                                    let actual_name = match &actual_type {
-                                                        TypeHint::Int => "int".to_string(),
-                                                        TypeHint::String => "string".to_string(),
-                                                        TypeHint::Bool => "bool".to_string(),
-                                                        TypeHint::Float => "float".to_string(),
-                                                        TypeHint::Object(name) => name.clone(),
-                                                        _ => "unknown".to_string(),
-                                                    };
+                                                    let expected_name =
+                                                        Self::type_expression_to_string(
+                                                            &var_tag.type_expr,
+                                                        );
+                                                    let actual_name =
+                                                        Self::type_hint_to_string(&actual_type);
 
                                                     diagnostics.push(diagnostic_for_node(
                                                         parsed,

@@ -5,10 +5,11 @@ use serde::Serialize;
 use serde_json::to_writer_pretty;
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
+use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Instant;
 
@@ -66,22 +67,22 @@ fn run_analysis(
     dry_run: bool,
     output_format: OutputFormat,
 ) -> Result<()> {
-    let canonical_path = path
-        .canonicalize()
-        .with_context(|| format!("failed to access {}", path.display()))?;
+    let requested_targets = resolve_targets(&path)?;
+    let canonical_targets = canonicalize_paths(requested_targets)?;
+    let analysis_root = derive_analysis_root(&canonical_targets);
 
-    let config_file = AnalyzerConfig::find_config(config_path, &canonical_path);
+    let config_file = AnalyzerConfig::find_config(config_path, &analysis_root);
     let config = if let Some(path) = config_file {
         Some(AnalyzerConfig::load(path)?)
     } else {
         None
     };
 
-    let php_files = analyzer::collect_php_files(&canonical_path)?;
+    let php_files = analyzer::collect_php_files_from_roots(&canonical_targets)?;
     let php_file_count = php_files.len();
 
     if php_file_count == 0 {
-        println!("No PHP files found under {}", canonical_path.display());
+        println!("No PHP files found under {}", analysis_root.display());
         return Ok(());
     }
 
@@ -90,7 +91,7 @@ fn run_analysis(
     let mut analyzer = analyzer::Analyzer::new(config)?;
     let start = Instant::now();
 
-    let diagnostics = match output_format {
+    let (diagnostics, diagnostics_streamed) = match output_format {
         OutputFormat::Text => {
             let progress = ProgressBar::new(php_file_count as u64);
             progress.set_style(
@@ -99,11 +100,18 @@ fn run_analysis(
                     .expect("valid progress bar template")
                     .progress_chars("#>-"),
             );
-            let result = analyzer.analyse_root_with_progress(&canonical_path, Some(&progress))?;
+            let result = analyzer.analyse_files_with_progress(
+                &php_files,
+                &analysis_root,
+                Some(&progress),
+            )?;
             progress.finish_and_clear();
-            result
+            (result, true)
         }
-        OutputFormat::Json => analyzer.analyse_root(&canonical_path)?,
+        OutputFormat::Json => (
+            analyzer.analyse_files_with_progress(&php_files, &analysis_root, None)?,
+            false,
+        ),
     };
 
     let duration = start.elapsed();
@@ -116,7 +124,7 @@ fn run_analysis(
         .filter(|d| matches!(d.severity, analyzer::Severity::Warning))
         .count();
 
-    let fixes = analyzer.fix_root(&canonical_path)?;
+    let fixes = analyzer.fix_files(&php_files)?;
     let fixable_count = fixes.values().map(Vec::len).sum::<usize>();
 
     match output_format {
@@ -126,7 +134,7 @@ fn run_analysis(
                     "Analysis complete ▸ {} PHP file(s), no diagnostics emitted yet.",
                     php_file_count
                 );
-            } else {
+            } else if !diagnostics_streamed {
                 for diag in &diagnostics {
                     println!("{diag}");
                 }
@@ -188,6 +196,89 @@ fn run_analysis(
     }
 
     Ok(())
+}
+
+fn resolve_targets(path: &Path) -> Result<Vec<PathBuf>> {
+    if path_contains_glob(path) {
+        let pattern = path.as_os_str().to_string_lossy().into_owned();
+        let matches = glob(&pattern)
+            .with_context(|| format!("invalid glob pattern \"{pattern}\""))?
+            .collect::<Result<Vec<_>, _>>()
+            .with_context(|| format!("failed to read entries for pattern \"{pattern}\""))?;
+
+        if matches.is_empty() {
+            bail!("no files matched \"{pattern}\"");
+        }
+
+        Ok(matches)
+    } else {
+        Ok(vec![path.to_path_buf()])
+    }
+}
+
+fn canonicalize_paths(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
+    let mut canonical_paths = Vec::new();
+    for path in paths {
+        let canonical_path = path
+            .canonicalize()
+            .with_context(|| format!("failed to access {}", path.display()))?;
+        canonical_paths.push(canonical_path);
+    }
+    canonical_paths.sort();
+    canonical_paths.dedup();
+    Ok(canonical_paths)
+}
+
+fn derive_analysis_root(targets: &[PathBuf]) -> PathBuf {
+    let directories: Vec<PathBuf> = targets
+        .iter()
+        .map(|target| {
+            if target.is_file() {
+                target
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| target.clone())
+            } else {
+                target.clone()
+            }
+        })
+        .collect();
+
+    longest_common_directory(&directories).unwrap_or_else(|| directories[0].clone())
+}
+
+fn longest_common_directory(paths: &[PathBuf]) -> Option<PathBuf> {
+    if paths.is_empty() {
+        return None;
+    }
+
+    let mut common = ancestors_from_root(&paths[0]);
+    for path in paths.iter().skip(1) {
+        let next = ancestors_from_root(path);
+        let mut idx = 0;
+        while idx < common.len() && idx < next.len() && common[idx] == next[idx] {
+            idx += 1;
+        }
+        common.truncate(idx);
+        if common.is_empty() {
+            break;
+        }
+    }
+
+    common.last().cloned()
+}
+
+fn ancestors_from_root(path: &Path) -> Vec<PathBuf> {
+    let mut ancestors: Vec<PathBuf> = path.ancestors().map(PathBuf::from).collect();
+    ancestors.reverse();
+    ancestors
+}
+
+fn path_contains_glob(path: &Path) -> bool {
+    path.as_os_str()
+        .to_string_lossy()
+        .chars()
+        .any(|c| matches!(c, '*' | '?' | '[' | ']' | '{' | '}'))
 }
 
 #[derive(Serialize)]

@@ -113,7 +113,7 @@ impl<'a> UnusedVariableVisitor<'a> {
         let UnusedVariableVisitor { defined, used, .. } = self;
         defined
             .into_iter()
-            .filter(|(name, _)| !used.contains(name))
+            .filter(|(name, _)| !used.contains(name) && !name.starts_with('_'))
             .map(|(name, definition)| UnusedVariable { name, definition })
             .collect()
     }

@@ -146,7 +146,9 @@ impl<'a> ScopeVisitor<'a> {
                 // Foreach loop key/value variables (pair case: foreach ($arr as $key => $val))
                 "pair" => {
                     // Check if the pair is inside a foreach_statement
-                    parent.parent().map_or(false, |grandparent| grandparent.kind() == "foreach_statement")
+                    parent.parent().map_or(false, |grandparent| {
+                        grandparent.kind() == "foreach_statement"
+                    })
                 }
                 _ => false,
             }

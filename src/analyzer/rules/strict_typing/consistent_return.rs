@@ -148,6 +148,11 @@ fn type_hint_to_string(hint: &TypeHint) -> String {
         TypeHint::Float => "float".to_string(),
         TypeHint::Object(class_name) => class_name.clone(),
         TypeHint::Nullable(inner) => format!("?{}", type_hint_to_string(inner)),
+        TypeHint::Union(types) => types
+            .iter()
+            .map(type_hint_to_string)
+            .collect::<Vec<_>>()
+            .join("|"),
         TypeHint::Unknown => "unknown".to_string(),
     }
 }

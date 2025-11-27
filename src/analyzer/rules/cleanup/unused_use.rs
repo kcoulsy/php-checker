@@ -90,5 +90,8 @@ fn unused_aliases<'a>(
         }
     });
 
-    unused.into_iter().collect()
+    unused
+        .into_iter()
+        .filter(|(alias, _)| !alias.starts_with('_'))
+        .collect()
 }

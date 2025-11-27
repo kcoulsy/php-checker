@@ -23,7 +23,7 @@ use serde::Serialize;
 use test_config::TestConfig;
 
 use anyhow::Result;
-use project::ProjectContext;
+use project::{ProjectContext, collect_file_metadata};
 use tree_sitter::Point;
 use walkdir::WalkDir;
 
@@ -298,41 +298,41 @@ mod tests {
 /// Lightweight analyzer that drives future passes.
 pub struct Analyzer {
     parser: Box<dyn parser::PhpParser>,
-    rules: Vec<Box<dyn rules::DiagnosticRule>>,
+    rules: Vec<Arc<dyn rules::DiagnosticRule>>,
     config: AnalyzerConfig,
 }
 
 impl Analyzer {
     pub fn new(config: Option<AnalyzerConfig>) -> Result<Self> {
         let parser = Box::new(parser::TreeSitterPhpParser::new()?);
-        let mut rules: Vec<Box<dyn rules::DiagnosticRule>> = vec![
-            Box::new(rules::UndefinedVariableRule::new()),
-            Box::new(rules::ArrayKeyNotDefinedRule::new()),
-            Box::new(rules::MissingReturnRule::new()),
-            Box::new(rules::MissingArgumentRule::new()),
-            Box::new(rules::TypeMismatchRule::new()),
-            Box::new(rules::ConsistentReturnRule::new()),
-            Box::new(rules::ForceReturnTypeRule::new()),
-            Box::new(rules::DuplicateDeclarationRule::new()),
-            Box::new(rules::ImpossibleComparisonRule::new()),
-            Box::new(rules::RedundantConditionRule::new()),
-            Box::new(rules::DuplicateSwitchCaseRule::new()),
-            Box::new(rules::FallthroughRule::new()),
-            Box::new(rules::UnreachableCodeRule::new()),
-            Box::new(rules::UnreachableStatementRule::new()),
-            Box::new(rules::UnusedVariableRule::new()),
-            Box::new(rules::UnusedUseRule::new()),
-            Box::new(rules::InvalidThisRule::new()),
-            Box::new(rules::DeprecatedApiRule::new()),
-            Box::new(rules::MutatingLiteralRule::new()),
-            Box::new(rules::StrictTypesRule::new()),
-            Box::new(rules::IncludeUserInputRule::new()),
-            Box::new(rules::HardCodedCredentialsRule::new()),
-            Box::new(rules::WeakHashingRule::new()),
-            Box::new(rules::HardCodedKeysRule::new()),
-            Box::new(rules::PhpDocVarCheckRule::new()),
-            Box::new(rules::PhpDocParamCheckRule::new()),
-            Box::new(rules::PhpDocReturnCheckRule::new()),
+        let mut rules: Vec<Arc<dyn rules::DiagnosticRule>> = vec![
+            Arc::new(rules::UndefinedVariableRule::new()),
+            Arc::new(rules::ArrayKeyNotDefinedRule::new()),
+            Arc::new(rules::MissingReturnRule::new()),
+            Arc::new(rules::MissingArgumentRule::new()),
+            Arc::new(rules::TypeMismatchRule::new()),
+            Arc::new(rules::ConsistentReturnRule::new()),
+            Arc::new(rules::ForceReturnTypeRule::new()),
+            Arc::new(rules::DuplicateDeclarationRule::new()),
+            Arc::new(rules::ImpossibleComparisonRule::new()),
+            Arc::new(rules::RedundantConditionRule::new()),
+            Arc::new(rules::DuplicateSwitchCaseRule::new()),
+            Arc::new(rules::FallthroughRule::new()),
+            Arc::new(rules::UnreachableCodeRule::new()),
+            Arc::new(rules::UnreachableStatementRule::new()),
+            Arc::new(rules::UnusedVariableRule::new()),
+            Arc::new(rules::UnusedUseRule::new()),
+            Arc::new(rules::InvalidThisRule::new()),
+            Arc::new(rules::DeprecatedApiRule::new()),
+            Arc::new(rules::MutatingLiteralRule::new()),
+            Arc::new(rules::StrictTypesRule::new()),
+            Arc::new(rules::IncludeUserInputRule::new()),
+            Arc::new(rules::HardCodedCredentialsRule::new()),
+            Arc::new(rules::WeakHashingRule::new()),
+            Arc::new(rules::HardCodedKeysRule::new()),
+            Arc::new(rules::PhpDocVarCheckRule::new()),
+            Arc::new(rules::PhpDocParamCheckRule::new()),
+            Arc::new(rules::PhpDocReturnCheckRule::new()),
         ];
 
         let config = config.unwrap_or_default();
@@ -368,60 +368,51 @@ impl Analyzer {
     ) -> Result<Vec<Diagnostic>> {
         let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
         let paths = collect_php_files(&canonical_root)?;
+        self.analyse_files_with_progress(&paths, &canonical_root, progress)
+    }
+
+    pub fn analyse_files_with_progress(
+        &mut self,
+        paths: &[PathBuf],
+        root: &Path,
+        progress: Option<&indicatif::ProgressBar>,
+    ) -> Result<Vec<Diagnostic>> {
+        if paths.is_empty() {
+            return Ok(Vec::new());
+        }
 
         if let Some(pb) = progress {
             pb.set_length(paths.len() as u64);
             pb.set_message("Parsing files");
         }
 
-        let context = Arc::new(Mutex::new(ProjectContext::new()));
-        let pb = progress.map(|p| p.clone());
+        let context = parse_files(paths, progress)?;
+        let file_count = context.len();
 
-        // Parse files in parallel - each thread creates its own parser
-        let results: Vec<Result<()>> = paths
-            .par_iter()
-            .map(|path| {
-                let mut parser = Box::new(parser::TreeSitterPhpParser::new()?);
-                let parsed = parser.parse_file(path)?;
-                context.lock().unwrap().insert(parsed);
-                if let Some(ref pb) = pb {
-                    pb.inc(1);
-                }
-                Ok(())
-            })
-            .collect();
-
-        // Check for parsing errors
-        for result in results {
-            result?;
-        }
-
-        if let Some(ref pb) = pb {
+        if let Some(pb) = progress {
             pb.set_message("Analyzing");
+            pb.set_length(file_count as u64);
             pb.set_position(0);
         }
 
-        let context = Arc::try_unwrap(context)
-            .unwrap_or_else(|_| {
-                panic!("Failed to unwrap Arc - multiple references still exist");
-            })
-            .into_inner()
-            .unwrap_or_else(|_| {
-                panic!("Failed to unwrap Mutex: poisoned lock");
-            });
-        let file_count = context.len();
+        let context = Arc::new(context);
+        let parsed_files: Vec<&parser::ParsedSource> = context.iter().collect();
+        let rules = self.rules.clone();
+        let pb_for_diag = progress.map(|p| p.clone());
+        let context_for_diag = context.clone();
 
-        if let Some(ref pb) = pb {
-            pb.set_length(file_count as u64);
-        }
-
-        let diagnostics: Vec<_> = context
-            .iter()
-            .enumerate()
-            .flat_map(|(i, parsed)| {
-                let diags = self.collect_diagnostics(parsed, &context);
-                if let Some(ref pb) = pb {
-                    pb.set_position((i + 1) as u64);
+        let diagnostics: Vec<_> = parsed_files
+            .par_iter()
+            .flat_map_iter(move |parsed| {
+                if let Some(ref pb) = pb_for_diag {
+                    pb.inc(1);
+                }
+                let mut diags =
+                    collect_diagnostics_with_rules(&rules, parsed, context_for_diag.as_ref());
+                if let Some(ref pb) = pb_for_diag {
+                    for diag in &diags {
+                        pb.println(format!("{diag}"));
+                    }
                 }
                 diags
             })
@@ -431,8 +422,8 @@ impl Analyzer {
 
         if self.config.psr4.enabled {
             all_diagnostics.extend(psr4::run_namespace_checks(
-                &canonical_root,
-                &context,
+                root,
+                context.as_ref(),
                 &self.config,
             ));
         }
@@ -443,35 +434,20 @@ impl Analyzer {
     pub fn fix_root(&mut self, root: &Path) -> Result<BTreeMap<PathBuf, Vec<fix::TextEdit>>> {
         let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
         let paths = collect_php_files(&canonical_root)?;
+        self.fix_files(&paths)
+    }
 
-        let context = Arc::new(Mutex::new(ProjectContext::new()));
-
-        // Parse files in parallel
-        let results: Vec<Result<()>> = paths
-            .par_iter()
-            .map(|path| {
-                let mut parser = Box::new(parser::TreeSitterPhpParser::new()?);
-                let parsed = parser.parse_file(path)?;
-                context.lock().unwrap().insert(parsed);
-                Ok(())
-            })
-            .collect();
-
-        // Check for parsing errors
-        for result in results {
-            result?;
+    pub fn fix_files(
+        &mut self,
+        paths: &[PathBuf],
+    ) -> Result<BTreeMap<PathBuf, Vec<fix::TextEdit>>> {
+        if paths.is_empty() {
+            return Ok(BTreeMap::new());
         }
 
-        let context = Arc::try_unwrap(context)
-            .unwrap_or_else(|_| {
-                panic!("Failed to unwrap Arc - multiple references still exist");
-            })
-            .into_inner()
-            .unwrap_or_else(|_| {
-                panic!("Failed to unwrap Mutex: poisoned lock");
-            });
-
+        let context = parse_files(paths, None)?;
         let mut edits: BTreeMap<PathBuf, Vec<fix::TextEdit>> = BTreeMap::new();
+
         for parsed in context.iter() {
             for rule in &self.rules {
                 let mut rule_edits = rule.fix(parsed, &context);
@@ -493,40 +469,47 @@ impl Analyzer {
         parsed: &parser::ParsedSource,
         context: &ProjectContext,
     ) -> Vec<Diagnostic> {
-        let ignore_state = IgnoreState::from_source(parsed.source.as_str());
-        if ignore_state.ignores_everything() {
-            return Vec::new();
-        }
-
-        let test_config = TestConfig::from_source(parsed.source.as_str());
-
-        let mut diagnostics = Vec::new();
-        for rule in &self.rules {
-            let rule_name = rule.name().to_string();
-
-            // Skip rule if test config says so
-            if test_config.is_test_file() && !test_config.should_run_rule(&rule_name) {
-                continue;
-            }
-
-            let mut rule_diagnostics = rule.run(parsed, context);
-            for diag in rule_diagnostics.iter_mut() {
-                diag.rule_name = Some(rule_name.clone());
-            }
-            diagnostics.extend(rule_diagnostics);
-        }
-
-        diagnostics
-            .into_iter()
-            .filter(|diag| {
-                diag.rule_name
-                    .as_deref()
-                    .map_or(true, |name| !ignore_state.should_ignore(name))
-            })
-            .collect()
+        collect_diagnostics_with_rules(&self.rules, parsed, context)
     }
 
     // run_psr4_checks moved to `rules::psr4`.
+}
+
+fn collect_diagnostics_with_rules(
+    rules: &[Arc<dyn rules::DiagnosticRule>],
+    parsed: &parser::ParsedSource,
+    context: &ProjectContext,
+) -> Vec<Diagnostic> {
+    let ignore_state = IgnoreState::from_source(parsed.source.as_str());
+    if ignore_state.ignores_everything() {
+        return Vec::new();
+    }
+
+    let test_config = TestConfig::from_source(parsed.source.as_str());
+
+    let mut diagnostics = Vec::new();
+    for rule in rules {
+        let rule_name = rule.name().to_string();
+
+        if test_config.is_test_file() && !test_config.should_run_rule(&rule_name) {
+            continue;
+        }
+
+        let mut rule_diagnostics = rule.run(parsed, context);
+        for diag in rule_diagnostics.iter_mut() {
+            diag.rule_name = Some(rule_name.clone());
+        }
+        diagnostics.extend(rule_diagnostics);
+    }
+
+    diagnostics
+        .into_iter()
+        .filter(|diag| {
+            diag.rule_name
+                .as_deref()
+                .map_or(true, |name| !ignore_state.should_ignore(name))
+        })
+        .collect()
 }
 
 pub fn collect_php_files(root: &Path) -> Result<Vec<PathBuf>> {
@@ -548,6 +531,57 @@ pub fn collect_php_files(root: &Path) -> Result<Vec<PathBuf>> {
     }
 
     Ok(php_files)
+}
+
+pub fn collect_php_files_from_roots(roots: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    let mut php_files = Vec::new();
+    for root in roots {
+        let mut files = collect_php_files(root)?;
+        php_files.append(&mut files);
+    }
+    php_files.sort();
+    php_files.dedup();
+    Ok(php_files)
+}
+
+fn parse_files(
+    paths: &[PathBuf],
+    progress: Option<&indicatif::ProgressBar>,
+) -> Result<ProjectContext> {
+    let context = Arc::new(Mutex::new(ProjectContext::new()));
+    let pb = progress.map(|p| p.clone());
+
+    let results: Vec<Result<()>> = paths
+        .par_iter()
+        .map(|path| {
+            let mut parser = Box::new(parser::TreeSitterPhpParser::new()?);
+            let parsed = parser.parse_file(path)?;
+            let metadata = collect_file_metadata(&parsed);
+            context
+                .lock()
+                .unwrap()
+                .insert_with_metadata(parsed, metadata);
+            if let Some(ref pb) = pb {
+                pb.inc(1);
+            }
+            Ok(())
+        })
+        .collect();
+
+    for result in results {
+        result?;
+    }
+
+    let context = Arc::try_unwrap(context)
+        .unwrap_or_else(|_| {
+            panic!("Failed to unwrap Arc - multiple references still exist");
+        })
+        .into_inner()
+        .unwrap_or_else(|_| {
+            panic!("Failed to unwrap Mutex: poisoned lock");
+        });
+
+    Ok(context)
 }
 
 fn is_php_file(path: &Path) -> bool {

@@ -11,6 +11,7 @@ pub enum TypeHint {
     Float,
     Object(String),          // Stores the class/interface name
     Nullable(Box<TypeHint>), // Wraps another type to make it nullable
+    Union(Vec<TypeHint>),    // Union of multiple types (int|string)
     Unknown,
 }
 

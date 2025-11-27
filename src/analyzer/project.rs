@@ -10,6 +10,12 @@ pub struct ProjectContext {
     function_symbols: HashMap<String, Vec<FunctionSymbol>>,
 }
 
+pub(crate) struct FileMetadata {
+    pub namespace: Option<String>,
+    pub uses: HashMap<String, UseInfo>,
+    pub symbols: Vec<FunctionSymbol>,
+}
+
 /// Namespace and symbol information for a single file.
 #[allow(dead_code)]
 pub struct FileScope {
@@ -47,10 +53,21 @@ impl ProjectContext {
     }
 
     pub fn insert(&mut self, parsed: parser::ParsedSource) {
+        let metadata = collect_file_metadata(&parsed);
+        self.insert_with_metadata(parsed, metadata);
+    }
+
+    pub(crate) fn insert_with_metadata(
+        &mut self,
+        parsed: parser::ParsedSource,
+        metadata: FileMetadata,
+    ) {
         let path = parsed.path.clone();
-        let namespace = collect_namespace(&parsed);
-        let uses = collect_use_aliases(&parsed);
-        let symbols = collect_function_symbols(&parsed, namespace.as_deref());
+        let FileMetadata {
+            namespace,
+            uses,
+            symbols,
+        } = metadata;
 
         for symbol in &symbols {
             self.function_symbols
@@ -62,7 +79,7 @@ impl ProjectContext {
         self.file_scopes.insert(
             path.clone(),
             FileScope {
-                namespace: namespace.clone(),
+                namespace,
                 functions: symbols.clone(),
                 uses,
             },
@@ -238,6 +255,18 @@ fn collect_function_symbols(
     });
 
     symbols
+}
+
+pub(crate) fn collect_file_metadata(parsed: &parser::ParsedSource) -> FileMetadata {
+    let namespace = collect_namespace(parsed);
+    let uses = collect_use_aliases(parsed);
+    let symbols = collect_function_symbols(parsed, namespace.as_deref());
+
+    FileMetadata {
+        namespace,
+        uses,
+        symbols,
+    }
 }
 
 fn qualify_name(namespace: Option<&str>, name: &str) -> String {

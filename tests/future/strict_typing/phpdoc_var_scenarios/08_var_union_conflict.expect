@@ -1,0 +1,3 @@
+error: @var type 'int|string' conflicts with assigned value type 'bool' at 7:26
+error: @var type 'int|string' conflicts with assigned value type 'float' at 13:27
+error: @var type 'User|Admin' conflicts with assigned value type 'int' at 18:28

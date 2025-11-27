@@ -28,7 +28,7 @@ pub use strict_typing::{
     TypeMismatchRule,
 };
 
-pub trait DiagnosticRule {
+pub trait DiagnosticRule: Send + Sync {
     fn name(&self) -> &str;
     fn run(
         &self,

@@ -124,6 +124,15 @@ function getAdmin(): Admin {  // ✅ ERROR: @return type 'User' conflicts with n
 **Complexity:** High
 **Value:** Very High
 
+#### Native PHP 8.0+ Union Type Support
+- Parse native union types (`int|string`) from PHP 8.0+
+- Handle union type compatibility checking
+- Support mixed union and nullable types
+
+**Complexity:** Medium
+**Value:** High
+**Note:** PHPDoc union types are working. Need to handle native PHP union types.
+
 ### Medium Priority
 
 #### Inline @var in Functions
@@ -141,14 +150,6 @@ function getAdmin(): Admin {  // ✅ ERROR: @return type 'User' conflicts with n
 
 **Complexity:** High
 **Value:** Medium
-
-#### Union Type Validation
-- Properly validate `int|string` union types
-- Check values are in union
-- Support nullable as union (`string|null` ≡ `?string`)
-
-**Complexity:** Medium
-**Value:** High
 
 ### Lower Priority
 
@@ -208,10 +209,10 @@ function getAdmin(): Admin {  // ✅ ERROR: @return type 'User' conflicts with n
 | Type Syntax | Parsing | @var | @param | @return |
 |-------------|---------|------|--------|---------|
 | Simple (`int`) | ✅ | ✅ | ✅ | ✅ |
-| Nullable (`?string`) | ✅ | ✅ | ❌ | ❌ |
+| Nullable (`?string`) | ✅ | ✅ | ✅ | ✅ |
 | Array (`int[]`) | ✅ | ❌ | ❌ | ❌ |
 | Generic (`array<K,V>`) | ✅ | ❌ | ❌ | ❌ |
-| Union (`int\|string`) | ✅ | ❌ | ❌ | ❌ |
+| Union (`int\|string`) | ✅ | ✅ | ✅ | ✅ |
 | **Object (`User`)** | ✅ | ✅ | ✅ | ✅ |
 | Template (`@template T`) | ❌ | ❌ | ❌ | ❌ |
 
@@ -352,11 +353,13 @@ See `ADD_RULE.md` and use `phpdoc_param_check.rs` as a template:
 
 **Current:**
 - ✅ 3/9 core PHPDoc tags validated (@var, @param, @return)
-- ✅ 2/7 type syntaxes fully supported (simple types + object types)
+- ✅ 4/7 type syntaxes fully supported (simple, object, nullable, union)
 - ✅ Foundation complete and tested
-- ✅ All existing tests still passing (26 total)
+- ✅ All existing tests still passing (27 total)
 - ✅ Test configuration system implemented
 - ✅ Object type support for all 3 implemented tags
+- ✅ Nullable type support (`?string`) for all 3 tags
+- ✅ Union type support (`int|string`) for all 3 tags
 
 **Target (Full PHPStan Parity):**
 - ⏳ 9/9 core PHPDoc tags
