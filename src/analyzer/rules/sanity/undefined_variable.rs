@@ -137,6 +137,17 @@ impl<'a> ScopeVisitor<'a> {
             match parent.kind() {
                 "assignment_expression" => parent.named_child(0).map_or(false, |left| left == node),
                 "simple_parameter" | "variadic_parameter" => true,
+                // Class property declarations
+                "property_element" => true,
+                // Catch clause exception variable
+                "catch_clause" => true,
+                // Foreach loop variables (both key and value)
+                "foreach_statement" => true,
+                // Foreach loop key/value variables (pair case: foreach ($arr as $key => $val))
+                "pair" => {
+                    // Check if the pair is inside a foreach_statement
+                    parent.parent().map_or(false, |grandparent| grandparent.kind() == "foreach_statement")
+                }
                 _ => false,
             }
         } else {
