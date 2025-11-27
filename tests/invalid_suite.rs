@@ -32,9 +32,13 @@ struct TestFailure {
 impl TestFailure {
     fn format_diff(&self) -> String {
         let mut output = String::new();
-        output.push_str(&format!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"));
+        output.push_str(&format!(
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
         output.push_str(&format!("FAILED: {}\n", self.file.display()));
-        output.push_str(&format!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"));
+        output.push_str(&format!(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
 
         output.push_str("\nExpected diagnostics:\n");
         if self.expected.is_empty() {
@@ -57,7 +61,9 @@ impl TestFailure {
         output.push_str("\nDifferences:\n");
 
         // Show missing diagnostics
-        let missing: Vec<_> = self.expected.iter()
+        let missing: Vec<_> = self
+            .expected
+            .iter()
             .filter(|e| !self.actual.contains(e))
             .collect();
         if !missing.is_empty() {
@@ -68,7 +74,9 @@ impl TestFailure {
         }
 
         // Show unexpected diagnostics
-        let unexpected: Vec<_> = self.actual.iter()
+        let unexpected: Vec<_> = self
+            .actual
+            .iter()
             .filter(|a| !self.expected.contains(a))
             .collect();
         if !unexpected.is_empty() {
@@ -129,14 +137,22 @@ fn invalid_fixtures_match_expectations() -> Result<()> {
 
     if !failures.is_empty() {
         let mut error_msg = String::new();
-        error_msg.push_str(&format!("\n\n{} test(s) FAILED, {} passed\n", failures.len(), passed));
+        error_msg.push_str(&format!(
+            "\n\n{} test(s) FAILED, {} passed\n",
+            failures.len(),
+            passed
+        ));
 
         for failure in &failures {
             error_msg.push_str(&failure.format_diff());
         }
 
         error_msg.push_str("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        error_msg.push_str(&format!("Summary: {} failed, {} passed\n", failures.len(), passed));
+        error_msg.push_str(&format!(
+            "Summary: {} failed, {} passed\n",
+            failures.len(),
+            passed
+        ));
         error_msg.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
         panic!("{}", error_msg);

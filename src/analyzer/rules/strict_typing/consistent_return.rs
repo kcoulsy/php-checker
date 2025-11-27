@@ -1,7 +1,5 @@
 use super::DiagnosticRule;
-use super::helpers::{
-    child_by_kind, diagnostic_for_node, literal_type, walk_node, TypeHint,
-};
+use super::helpers::{TypeHint, child_by_kind, diagnostic_for_node, literal_type, walk_node};
 use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
 use tree_sitter::Node;
@@ -50,7 +48,6 @@ impl DiagnosticRule for ConsistentReturnRule {
                     return_types.push((return_type, candidate));
                 }
             });
-
 
             if return_types.len() <= 1 {
                 return; // Need at least 2 returns to check consistency
@@ -110,17 +107,17 @@ fn infer_expression_type(node: Node, _parsed: &parser::ParsedSource) -> Option<T
             // For variables, we can't easily determine type statically
             // This could be extended with more sophisticated analysis
             None
-        },
+        }
         "function_call_expression" => {
             // For function calls, we'd need to know the function's return type
             // This is complex and would require inter-procedural analysis
             None
-        },
+        }
         "binary_expression" | "unary_expression" => {
             // For expressions, we'd need to evaluate the types
             // This could be extended with expression type inference
             None
-        },
+        }
         _ => {
             // Try using the literal_type helper for other cases
             literal_type(node)
@@ -139,11 +136,18 @@ fn types_compatible(type1: &ReturnType, type2: &ReturnType) -> bool {
 fn type_description(return_type: &ReturnType) -> String {
     match return_type {
         ReturnType::Void => "void".to_string(),
-        ReturnType::Typed(TypeHint::Int) => "int".to_string(),
-        ReturnType::Typed(TypeHint::String) => "string".to_string(),
-        ReturnType::Typed(TypeHint::Bool) => "bool".to_string(),
-        ReturnType::Typed(TypeHint::Float) => "float".to_string(),
-        ReturnType::Typed(TypeHint::Object(class_name)) => class_name.clone(),
-        ReturnType::Typed(TypeHint::Unknown) => "unknown".to_string(),
+        ReturnType::Typed(hint) => type_hint_to_string(hint),
+    }
+}
+
+fn type_hint_to_string(hint: &TypeHint) -> String {
+    match hint {
+        TypeHint::Int => "int".to_string(),
+        TypeHint::String => "string".to_string(),
+        TypeHint::Bool => "bool".to_string(),
+        TypeHint::Float => "float".to_string(),
+        TypeHint::Object(class_name) => class_name.clone(),
+        TypeHint::Nullable(inner) => format!("?{}", type_hint_to_string(inner)),
+        TypeHint::Unknown => "unknown".to_string(),
     }
 }

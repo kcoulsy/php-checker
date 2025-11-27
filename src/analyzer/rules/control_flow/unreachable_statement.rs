@@ -85,7 +85,8 @@ impl<'a> UnreachableStatementVisitor<'a> {
                 let child = cursor.node();
                 match child.kind() {
                     "case" | ":" => {} // Skip case label
-                    "break_statement" | "return_statement" | "continue_statement" | "throw_statement" | "goto_statement" => {
+                    "break_statement" | "return_statement" | "continue_statement"
+                    | "throw_statement" | "goto_statement" => {
                         if encountered_control_flow {
                             let stmt_type = match child.kind() {
                                 "break_statement" => "break",
@@ -106,7 +107,7 @@ impl<'a> UnreachableStatementVisitor<'a> {
                         }
                     }
                     "comment" => {} // Skip comments
-                    _ => {} // Other statements are allowed
+                    _ => {}         // Other statements are allowed
                 }
 
                 if !cursor.goto_next_sibling() {

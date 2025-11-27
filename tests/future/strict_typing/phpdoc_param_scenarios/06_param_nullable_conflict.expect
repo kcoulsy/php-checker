@@ -1,0 +1,1 @@
+strict_typing/phpdoc_param_check | 10 | @param type '?string' conflicts with native type hint 'string' for parameter $name

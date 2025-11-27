@@ -1,0 +1,1 @@
+strict_typing/phpdoc_return_check | 10 | @return type '?string' conflicts with native return type hint 'string'

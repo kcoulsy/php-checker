@@ -9,7 +9,8 @@ pub enum TypeHint {
     String,
     Bool,
     Float,
-    Object(String),  // Stores the class/interface name
+    Object(String),          // Stores the class/interface name
+    Nullable(Box<TypeHint>), // Wraps another type to make it nullable
     Unknown,
 }
 
@@ -233,6 +234,20 @@ pub fn collect_function_signatures(
 }
 
 pub fn type_hint_from_parameter(param: Node, parsed: &parser::ParsedSource) -> TypeHint {
+    // Check for optional_type (nullable with ?)
+    if let Some(optional_type) = find_descendant_by_kind(param, "optional_type") {
+        // Extract the inner type from the optional_type node
+        for i in 0..optional_type.named_child_count() {
+            if let Some(child) = optional_type.named_child(i) {
+                // Recursively get the inner type hint
+                let inner = type_hint_from_node(child, parsed);
+                if inner != TypeHint::Unknown {
+                    return TypeHint::Nullable(Box::new(inner));
+                }
+            }
+        }
+    }
+
     // Check for primitive types
     if let Some(primitive) = find_descendant_by_kind(param, "primitive_type") {
         if let Some(text) = node_text(primitive, parsed) {
@@ -254,6 +269,32 @@ pub fn type_hint_from_parameter(param: Node, parsed: &parser::ParsedSource) -> T
     }
 
     TypeHint::Unknown
+}
+
+// Helper function to get type hint from a node (primitive or named)
+fn type_hint_from_node(node: Node, parsed: &parser::ParsedSource) -> TypeHint {
+    match node.kind() {
+        "primitive_type" => {
+            if let Some(text) = node_text(node, parsed) {
+                return match text.as_str() {
+                    "int" => TypeHint::Int,
+                    "string" => TypeHint::String,
+                    "bool" | "boolean" => TypeHint::Bool,
+                    "float" | "double" => TypeHint::Float,
+                    _ => TypeHint::Unknown,
+                };
+            }
+            TypeHint::Unknown
+        }
+        "named_type" => {
+            if let Some(text) = node_text(node, parsed) {
+                TypeHint::Object(text)
+            } else {
+                TypeHint::Unknown
+            }
+        }
+        _ => TypeHint::Unknown,
+    }
 }
 
 pub fn argument_literal_kind<'a>(arg: Node<'a>) -> Option<(LiteralKind, Node<'a>)> {

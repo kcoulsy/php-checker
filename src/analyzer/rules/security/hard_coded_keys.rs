@@ -3,8 +3,22 @@ use super::helpers::{diagnostic_for_node, node_text, walk_node};
 use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
 
-const KEY_INDICATORS: &[&str] = &["key", "secret", "token", "api_key", "apikey", "encryption", "cipher"];
-const ENCRYPTION_FUNCTIONS: &[&str] = &["openssl_encrypt", "openssl_decrypt", "crypt", "hash_hmac", "password_hash"];
+const KEY_INDICATORS: &[&str] = &[
+    "key",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "encryption",
+    "cipher",
+];
+const ENCRYPTION_FUNCTIONS: &[&str] = &[
+    "openssl_encrypt",
+    "openssl_decrypt",
+    "crypt",
+    "hash_hmac",
+    "password_hash",
+];
 
 pub struct HardCodedKeysRule;
 
@@ -63,7 +77,10 @@ fn is_potential_key(text: &str) -> bool {
     let text_lower = text.to_lowercase();
 
     // Check for key indicator words
-    if KEY_INDICATORS.iter().any(|indicator| text_lower.contains(indicator)) {
+    if KEY_INDICATORS
+        .iter()
+        .any(|indicator| text_lower.contains(indicator))
+    {
         return true;
     }
 
@@ -73,7 +90,11 @@ fn is_potential_key(text: &str) -> bool {
     }
 
     // Check for base64-like patterns
-    if text.len() >= 16 && text.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=') {
+    if text.len() >= 16
+        && text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
+    {
         // Additional check for base64 padding
         if text.ends_with('=') || (text.len() % 4 == 0) {
             return true;
@@ -111,7 +132,8 @@ fn is_used_as_key(string_node: tree_sitter::Node, parsed: &parser::ParsedSource)
                                 if is_encryption_function_call(&function_call, parsed) {
                                     // Check argument position (keys are typically 2nd or 3rd argument)
                                     let arg_index = get_argument_index(&parent, &grandparent);
-                                    if arg_index == 1 || arg_index == 2 { // 0-indexed
+                                    if arg_index == 1 || arg_index == 2 {
+                                        // 0-indexed
                                         return true;
                                     }
                                 }
@@ -125,7 +147,10 @@ fn is_used_as_key(string_node: tree_sitter::Node, parsed: &parser::ParsedSource)
                 if let Some(left) = parent.child_by_field_name("left") {
                     if let Some(var_name) = extract_variable_name(left, parsed) {
                         let lowered = var_name.to_lowercase();
-                        if KEY_INDICATORS.iter().any(|indicator| lowered.contains(indicator)) {
+                        if KEY_INDICATORS
+                            .iter()
+                            .any(|indicator| lowered.contains(indicator))
+                        {
                             return true;
                         }
                     }
@@ -135,7 +160,10 @@ fn is_used_as_key(string_node: tree_sitter::Node, parsed: &parser::ParsedSource)
                 // Check if declared as a key-related variable
                 if let Some(var_name) = extract_variable_name_from_declaration(parent, parsed) {
                     let lowered = var_name.to_lowercase();
-                    if KEY_INDICATORS.iter().any(|indicator| lowered.contains(indicator)) {
+                    if KEY_INDICATORS
+                        .iter()
+                        .any(|indicator| lowered.contains(indicator))
+                    {
                         return true;
                     }
                 }
@@ -154,7 +182,10 @@ fn is_used_as_key(string_node: tree_sitter::Node, parsed: &parser::ParsedSource)
     false
 }
 
-fn is_encryption_function_call(function_call: &tree_sitter::Node, parsed: &parser::ParsedSource) -> bool {
+fn is_encryption_function_call(
+    function_call: &tree_sitter::Node,
+    parsed: &parser::ParsedSource,
+) -> bool {
     use super::helpers::child_by_kind;
 
     if let Some(name_node) = child_by_kind(*function_call, "name") {
@@ -190,7 +221,10 @@ fn extract_variable_name(node: tree_sitter::Node, parsed: &parser::ParsedSource)
     }
 }
 
-fn extract_variable_name_from_declaration(node: tree_sitter::Node, parsed: &parser::ParsedSource) -> Option<String> {
+fn extract_variable_name_from_declaration(
+    node: tree_sitter::Node,
+    parsed: &parser::ParsedSource,
+) -> Option<String> {
     for idx in 0..node.named_child_count() {
         if let Some(child) = node.named_child(idx) {
             if child.kind() == "simple_parameter" || child.kind() == "property_element" {

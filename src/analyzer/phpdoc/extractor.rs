@@ -1,9 +1,12 @@
-use super::parser::{PhpDocParser, PhpDocComment};
+use super::parser::{PhpDocComment, PhpDocParser};
 use crate::analyzer::parser::ParsedSource;
 use tree_sitter::Node;
 
 /// Extract PHPDoc comment that precedes a node
-pub fn extract_phpdoc_for_node<'a>(node: Node<'a>, parsed: &'a ParsedSource) -> Option<PhpDocComment> {
+pub fn extract_phpdoc_for_node<'a>(
+    node: Node<'a>,
+    parsed: &'a ParsedSource,
+) -> Option<PhpDocComment> {
     // Look for a comment node immediately before this node
     let parent = node.parent()?;
     let node_index = (0..parent.named_child_count())
@@ -64,8 +67,8 @@ pub fn find_preceding_comment<'a>(node: Node<'a>) -> Option<Node<'a>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analyzer::parser::TreeSitterPhpParser;
     use crate::analyzer::parser::PhpParser;
+    use crate::analyzer::parser::TreeSitterPhpParser;
     use std::sync::Arc;
 
     #[test]

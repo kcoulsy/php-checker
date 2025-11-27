@@ -18,9 +18,16 @@ struct ValidTestFailure {
 impl ValidTestFailure {
     fn format(&self) -> String {
         let mut output = String::new();
-        output.push_str(&format!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"));
-        output.push_str(&format!("FAILED: {} (should have NO diagnostics)\n", self.file.display()));
-        output.push_str(&format!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"));
+        output.push_str(&format!(
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
+        output.push_str(&format!(
+            "FAILED: {} (should have NO diagnostics)\n",
+            self.file.display()
+        ));
+        output.push_str(&format!(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
         output.push_str("\nUnexpected diagnostics:\n");
         for (i, diag) in self.diagnostics.iter().enumerate() {
             output.push_str(&format!("  {:2}. {}\n", i + 1, diag));
@@ -61,14 +68,22 @@ fn valid_fixtures_have_no_diagnostics() -> Result<()> {
 
     if !failures.is_empty() {
         let mut error_msg = String::new();
-        error_msg.push_str(&format!("\n\n{} valid test(s) FAILED, {} passed\n", failures.len(), passed));
+        error_msg.push_str(&format!(
+            "\n\n{} valid test(s) FAILED, {} passed\n",
+            failures.len(),
+            passed
+        ));
 
         for failure in &failures {
             error_msg.push_str(&failure.format());
         }
 
         error_msg.push_str("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        error_msg.push_str(&format!("Summary: {} failed, {} passed\n", failures.len(), passed));
+        error_msg.push_str(&format!(
+            "Summary: {} failed, {} passed\n",
+            failures.len(),
+            passed
+        ));
         error_msg.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
         panic!("{}", error_msg);

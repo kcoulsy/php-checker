@@ -4,7 +4,13 @@ use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
 
 const WEAK_HASH_FUNCTIONS: &[&str] = &["md5", "sha1"];
-const PASSWORD_INDICATORS: &[&str] = &["password", "passwd", "pwd", "userpassword", "hashedpassword"];
+const PASSWORD_INDICATORS: &[&str] = &[
+    "password",
+    "passwd",
+    "pwd",
+    "userpassword",
+    "hashedpassword",
+];
 
 pub struct WeakHashingRule;
 
@@ -69,7 +75,10 @@ fn is_password_context(function_call: tree_sitter::Node, parsed: &parser::Parsed
                 if let Some(left) = parent.child_by_field_name("left") {
                     if let Some(var_name) = extract_variable_name(left, parsed) {
                         let lowered = var_name.to_lowercase();
-                        if PASSWORD_INDICATORS.iter().any(|indicator| lowered.contains(indicator)) {
+                        if PASSWORD_INDICATORS
+                            .iter()
+                            .any(|indicator| lowered.contains(indicator))
+                        {
                             return true;
                         }
                     }
@@ -78,7 +87,10 @@ fn is_password_context(function_call: tree_sitter::Node, parsed: &parser::Parsed
             "variable_declaration" => {
                 if let Some(var_name) = extract_variable_name_from_declaration(parent, parsed) {
                     let lowered = var_name.to_lowercase();
-                    if PASSWORD_INDICATORS.iter().any(|indicator| lowered.contains(indicator)) {
+                    if PASSWORD_INDICATORS
+                        .iter()
+                        .any(|indicator| lowered.contains(indicator))
+                    {
                         return true;
                     }
                 }
@@ -116,7 +128,10 @@ fn extract_variable_name(node: tree_sitter::Node, parsed: &parser::ParsedSource)
     }
 }
 
-fn extract_variable_name_from_declaration(node: tree_sitter::Node, parsed: &parser::ParsedSource) -> Option<String> {
+fn extract_variable_name_from_declaration(
+    node: tree_sitter::Node,
+    parsed: &parser::ParsedSource,
+) -> Option<String> {
     // For declarations like $password = md5(...)
     for idx in 0..node.named_child_count() {
         if let Some(child) = node.named_child(idx) {
@@ -136,7 +151,10 @@ fn is_password_argument(node: tree_sitter::Node, parsed: &parser::ParsedSource) 
         if child.kind() == "string" {
             if let Some(text) = node_text(child, parsed) {
                 let lowered = text.to_lowercase();
-                if PASSWORD_INDICATORS.iter().any(|indicator| lowered.contains(indicator)) {
+                if PASSWORD_INDICATORS
+                    .iter()
+                    .any(|indicator| lowered.contains(indicator))
+                {
                     return;
                 }
             }
@@ -145,7 +163,10 @@ fn is_password_argument(node: tree_sitter::Node, parsed: &parser::ParsedSource) 
         if child.kind() == "variable_name" {
             if let Some(var_name) = node_text(child, parsed) {
                 let lowered = var_name.to_lowercase();
-                if PASSWORD_INDICATORS.iter().any(|indicator| lowered.contains(indicator)) {
+                if PASSWORD_INDICATORS
+                    .iter()
+                    .any(|indicator| lowered.contains(indicator))
+                {
                     return;
                 }
             }

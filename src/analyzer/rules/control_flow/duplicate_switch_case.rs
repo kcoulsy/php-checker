@@ -108,4 +108,3 @@ fn literal_case_value(node: Node, parsed: &parser::ParsedSource) -> Option<(Stri
         _ => None,
     }
 }
-

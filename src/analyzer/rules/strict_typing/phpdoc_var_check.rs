@@ -1,8 +1,8 @@
 use super::DiagnosticRule;
-use super::helpers::{child_by_kind, diagnostic_for_node, literal_type, walk_node, TypeHint};
-use crate::analyzer::phpdoc::{extract_phpdoc_for_node, TypeExpression};
+use super::helpers::{TypeHint, child_by_kind, diagnostic_for_node, literal_type, walk_node};
+use crate::analyzer::phpdoc::{TypeExpression, extract_phpdoc_for_node};
 use crate::analyzer::project::ProjectContext;
-use crate::analyzer::{parser, Severity};
+use crate::analyzer::{Severity, parser};
 
 pub struct PhpDocVarCheckRule;
 
@@ -22,7 +22,10 @@ impl PhpDocVarCheckRule {
                 // Anything else is treated as an object type (class/interface name)
                 _ => Some(TypeHint::Object(s.clone())),
             },
-            TypeExpression::Nullable(inner) => Self::type_expression_to_hint(inner),
+            TypeExpression::Nullable(inner) => {
+                // Wrap the inner type in Nullable
+                Self::type_expression_to_hint(inner).map(|t| TypeHint::Nullable(Box::new(t)))
+            }
             _ => None,
         }
     }
@@ -54,19 +57,25 @@ impl DiagnosticRule for PhpDocVarCheckRule {
                         if let Some(child) = node.named_child(i) {
                             if child.kind() == "property_element" {
                                 // Check if there's a property_initializer
-                                if let Some(initializer) = child_by_kind(child, "property_initializer") {
+                                if let Some(initializer) =
+                                    child_by_kind(child, "property_initializer")
+                                {
                                     // Get the value node (skip the = sign)
                                     if let Some(value_node) = initializer.named_child(0) {
                                         // Get the literal type of the value
                                         if let Some(actual_type) = literal_type(value_node) {
                                             // Get the expected type from @var
-                                            if let Some(expected_type) = Self::type_expression_to_hint(&var_tag.type_expr) {
+                                            if let Some(expected_type) =
+                                                Self::type_expression_to_hint(&var_tag.type_expr)
+                                            {
                                                 // Check if types match
                                                 if actual_type != expected_type {
                                                     let expected_name = match &var_tag.type_expr {
                                                         TypeExpression::Simple(s) => s.clone(),
                                                         TypeExpression::Nullable(inner) => {
-                                                            if let TypeExpression::Simple(s) = inner.as_ref() {
+                                                            if let TypeExpression::Simple(s) =
+                                                                inner.as_ref()
+                                                            {
                                                                 format!("?{}", s)
                                                             } else {
                                                                 "unknown".to_string()

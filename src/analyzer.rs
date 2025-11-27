@@ -1,20 +1,23 @@
 pub mod config;
 pub mod fix;
 pub mod ignore;
-pub mod phpdoc;
-pub mod test_config;
 mod parser;
+pub mod phpdoc;
 mod project;
 mod rules;
+pub mod test_config;
 
 use std::{
     collections::BTreeMap,
     fmt,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 use config::AnalyzerConfig;
 use ignore::IgnoreState;
+use parser::PhpParser;
+use rayon::prelude::*;
 use rules::psr4;
 use serde::Serialize;
 use test_config::TestConfig;
@@ -355,40 +358,118 @@ impl Analyzer {
     }
 
     pub fn analyse_root(&mut self, root: &Path) -> Result<Vec<Diagnostic>> {
+        self.analyse_root_with_progress(root, None)
+    }
+
+    pub fn analyse_root_with_progress(
+        &mut self,
+        root: &Path,
+        progress: Option<&indicatif::ProgressBar>,
+    ) -> Result<Vec<Diagnostic>> {
         let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
         let paths = collect_php_files(&canonical_root)?;
-        let mut context = ProjectContext::new();
 
-        for path in paths {
-            let parsed = self.parser.parse_file(&path)?;
-            context.insert(parsed);
+        if let Some(pb) = progress {
+            pb.set_length(paths.len() as u64);
+            pb.set_message("Parsing files");
         }
 
-        let mut diagnostics = Vec::new();
-        for parsed in context.iter() {
-            diagnostics.extend(self.collect_diagnostics(parsed, &context));
+        let context = Arc::new(Mutex::new(ProjectContext::new()));
+        let pb = progress.map(|p| p.clone());
+
+        // Parse files in parallel - each thread creates its own parser
+        let results: Vec<Result<()>> = paths
+            .par_iter()
+            .map(|path| {
+                let mut parser = Box::new(parser::TreeSitterPhpParser::new()?);
+                let parsed = parser.parse_file(path)?;
+                context.lock().unwrap().insert(parsed);
+                if let Some(ref pb) = pb {
+                    pb.inc(1);
+                }
+                Ok(())
+            })
+            .collect();
+
+        // Check for parsing errors
+        for result in results {
+            result?;
         }
+
+        if let Some(ref pb) = pb {
+            pb.set_message("Analyzing");
+            pb.set_position(0);
+        }
+
+        let context = Arc::try_unwrap(context)
+            .unwrap_or_else(|_| {
+                panic!("Failed to unwrap Arc - multiple references still exist");
+            })
+            .into_inner()
+            .unwrap_or_else(|_| {
+                panic!("Failed to unwrap Mutex: poisoned lock");
+            });
+        let file_count = context.len();
+
+        if let Some(ref pb) = pb {
+            pb.set_length(file_count as u64);
+        }
+
+        let diagnostics: Vec<_> = context
+            .iter()
+            .enumerate()
+            .flat_map(|(i, parsed)| {
+                let diags = self.collect_diagnostics(parsed, &context);
+                if let Some(ref pb) = pb {
+                    pb.set_position((i + 1) as u64);
+                }
+                diags
+            })
+            .collect();
+
+        let mut all_diagnostics = diagnostics;
 
         if self.config.psr4.enabled {
-            diagnostics.extend(psr4::run_namespace_checks(
+            all_diagnostics.extend(psr4::run_namespace_checks(
                 &canonical_root,
                 &context,
                 &self.config,
             ));
         }
 
-        Ok(diagnostics)
+        Ok(all_diagnostics)
     }
 
     pub fn fix_root(&mut self, root: &Path) -> Result<BTreeMap<PathBuf, Vec<fix::TextEdit>>> {
         let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
         let paths = collect_php_files(&canonical_root)?;
-        let mut context = ProjectContext::new();
 
-        for path in paths {
-            let parsed = self.parser.parse_file(&path)?;
-            context.insert(parsed);
+        let context = Arc::new(Mutex::new(ProjectContext::new()));
+
+        // Parse files in parallel
+        let results: Vec<Result<()>> = paths
+            .par_iter()
+            .map(|path| {
+                let mut parser = Box::new(parser::TreeSitterPhpParser::new()?);
+                let parsed = parser.parse_file(path)?;
+                context.lock().unwrap().insert(parsed);
+                Ok(())
+            })
+            .collect();
+
+        // Check for parsing errors
+        for result in results {
+            result?;
         }
+
+        let context = Arc::try_unwrap(context)
+            .unwrap_or_else(|_| {
+                panic!("Failed to unwrap Arc - multiple references still exist");
+            })
+            .into_inner()
+            .unwrap_or_else(|_| {
+                panic!("Failed to unwrap Mutex: poisoned lock");
+            });
 
         let mut edits: BTreeMap<PathBuf, Vec<fix::TextEdit>> = BTreeMap::new();
         for parsed in context.iter() {

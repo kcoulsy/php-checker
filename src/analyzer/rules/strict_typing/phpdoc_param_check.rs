@@ -41,6 +41,22 @@ impl PhpDocParamCheckRule {
     }
 }
 
+impl PhpDocParamCheckRule {
+    fn type_hint_to_string(hint: &TypeHint) -> String {
+        match hint {
+            TypeHint::Int => "int".to_string(),
+            TypeHint::String => "string".to_string(),
+            TypeHint::Bool => "bool".to_string(),
+            TypeHint::Float => "float".to_string(),
+            TypeHint::Object(name) => name.clone(),
+            TypeHint::Nullable(inner) => {
+                format!("?{}", Self::type_hint_to_string(inner.as_ref()))
+            }
+            TypeHint::Unknown => "unknown".to_string(),
+        }
+    }
+}
+
 impl DiagnosticRule for PhpDocParamCheckRule {
     fn name(&self) -> &str {
         "strict_typing/phpdoc_param_check"
@@ -104,14 +120,7 @@ impl DiagnosticRule for PhpDocParamCheckRule {
                                                 _ => "unknown".to_string(),
                                             };
 
-                                            let native_type_str = match &native_hint {
-                                                TypeHint::Int => "int",
-                                                TypeHint::String => "string",
-                                                TypeHint::Bool => "bool",
-                                                TypeHint::Float => "float",
-                                                TypeHint::Object(name) => name.as_str(),
-                                                TypeHint::Unknown => "unknown",
-                                            };
+                                            let native_type_str = Self::type_hint_to_string(&native_hint);
 
                                             // Find the type node for error reporting
                                             let type_node = child_by_kind(param_node, "primitive_type")

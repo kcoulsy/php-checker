@@ -17,7 +17,8 @@ impl TestConfig {
     pub fn from_source(source: &str) -> Self {
         let mut config = TestConfig::default();
 
-        for line in source.lines().take(20) {  // Only check first 20 lines
+        for line in source.lines().take(20) {
+            // Only check first 20 lines
             let line = line.trim();
 
             // Check for test config comment
@@ -86,7 +87,10 @@ class Test {}
 "#;
         let config = TestConfig::from_source(source);
         assert!(config.only_rules.is_some());
-        assert_eq!(config.only_rules.unwrap(), vec!["strict_typing/phpdoc_var_check"]);
+        assert_eq!(
+            config.only_rules.unwrap(),
+            vec!["strict_typing/phpdoc_var_check"]
+        );
     }
 
     #[test]
@@ -113,7 +117,11 @@ class Test {}
 "#;
         let config = TestConfig::from_source(source);
         assert_eq!(config.skip_rules.len(), 2);
-        assert!(config.skip_rules.contains(&"sanity/undefined_variable".to_string()));
+        assert!(
+            config
+                .skip_rules
+                .contains(&"sanity/undefined_variable".to_string())
+        );
     }
 
     #[test]

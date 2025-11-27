@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Instant;
 
 #[derive(ValueEnum, Clone, Copy)]
@@ -84,9 +85,27 @@ fn run_analysis(
         return Ok(());
     }
 
+    println!("Checking {} file(s)...", php_file_count);
+
     let mut analyzer = analyzer::Analyzer::new(config)?;
     let start = Instant::now();
-    let diagnostics = analyzer.analyse_root(&canonical_path)?;
+
+    let diagnostics = match output_format {
+        OutputFormat::Text => {
+            let progress = ProgressBar::new(php_file_count as u64);
+            progress.set_style(
+                ProgressStyle::default_bar()
+                    .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
+                    .expect("valid progress bar template")
+                    .progress_chars("#>-"),
+            );
+            let result = analyzer.analyse_root_with_progress(&canonical_path, Some(&progress))?;
+            progress.finish_and_clear();
+            result
+        }
+        OutputFormat::Json => analyzer.analyse_root(&canonical_path)?,
+    };
+
     let duration = start.elapsed();
     let error_count = diagnostics
         .iter()

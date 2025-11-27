@@ -49,7 +49,9 @@ impl TypeExpression {
         match self {
             TypeExpression::Simple(s) => s == type_name,
             TypeExpression::Array(inner) => inner.contains_type(type_name),
-            TypeExpression::Generic { params, .. } => params.iter().any(|p| p.contains_type(type_name)),
+            TypeExpression::Generic { params, .. } => {
+                params.iter().any(|p| p.contains_type(type_name))
+            }
             TypeExpression::Union(types) => types.iter().any(|t| t.contains_type(type_name)),
             TypeExpression::Nullable(inner) => inner.contains_type(type_name),
             _ => false,

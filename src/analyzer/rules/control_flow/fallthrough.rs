@@ -83,7 +83,8 @@ impl<'a> FallthroughVisitor<'a> {
             // Not the last case and doesn't end with control flow and no ignore comment
             if i < case_nodes.len() - 1
                 && !case_ends_with_control_flow(*case_node, self.parsed)
-                && !case_has_ignore_comment(*case_node, self.parsed) {
+                && !case_has_ignore_comment(*case_node, self.parsed)
+            {
                 self.diagnostics.push(diagnostic_for_node(
                     self.parsed,
                     *case_node,
@@ -117,7 +118,14 @@ fn case_ends_with_control_flow(case_node: Node, _parsed: &parser::ParsedSource) 
     }
 
     match last_statement {
-        Some(stmt) => matches!(stmt.kind(), "break_statement" | "return_statement" | "continue_statement" | "throw_statement" | "goto_statement"),
+        Some(stmt) => matches!(
+            stmt.kind(),
+            "break_statement"
+                | "return_statement"
+                | "continue_statement"
+                | "throw_statement"
+                | "goto_statement"
+        ),
         None => false,
     }
 }

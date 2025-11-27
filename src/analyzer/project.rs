@@ -79,6 +79,10 @@ impl ProjectContext {
         self.sources.values()
     }
 
+    pub fn len(&self) -> usize {
+        self.sources.len()
+    }
+
     pub fn scope_for(&self, path: &Path) -> Option<&FileScope> {
         self.file_scopes.get(path)
     }

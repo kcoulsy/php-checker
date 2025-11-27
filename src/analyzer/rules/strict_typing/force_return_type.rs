@@ -1,7 +1,5 @@
 use super::DiagnosticRule;
-use super::helpers::{
-    child_by_kind, diagnostic_for_node, node_text, walk_node,
-};
+use super::helpers::{child_by_kind, diagnostic_for_node, node_text, walk_node};
 use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
 
@@ -44,7 +42,9 @@ impl DiagnosticRule for ForceReturnTypeRule {
                     parsed,
                     name_node,
                     Severity::Warning,
-                    format!("function {name} should have an explicit return type at {row}:{column}"),
+                    format!(
+                        "function {name} should have an explicit return type at {row}:{column}"
+                    ),
                 ));
             }
         });

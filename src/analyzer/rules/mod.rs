@@ -14,12 +14,18 @@ pub mod strict_typing;
 pub use api::{DeprecatedApiRule, InvalidThisRule};
 pub use cleanup::{UnusedUseRule, UnusedVariableRule};
 pub use control_flow::{
-    DuplicateSwitchCaseRule, FallthroughRule, ImpossibleComparisonRule, RedundantConditionRule, UnreachableCodeRule, UnreachableStatementRule,
+    DuplicateSwitchCaseRule, FallthroughRule, ImpossibleComparisonRule, RedundantConditionRule,
+    UnreachableCodeRule, UnreachableStatementRule,
 };
 pub use sanity::{ArrayKeyNotDefinedRule, DuplicateDeclarationRule, UndefinedVariableRule};
-pub use security::{HardCodedCredentialsRule, HardCodedKeysRule, IncludeUserInputRule, MutatingLiteralRule, WeakHashingRule};
+pub use security::{
+    HardCodedCredentialsRule, HardCodedKeysRule, IncludeUserInputRule, MutatingLiteralRule,
+    WeakHashingRule,
+};
 pub use strict_typing::{
-    ConsistentReturnRule, ForceReturnTypeRule, MissingArgumentRule, MissingReturnRule, PhpDocParamCheckRule, PhpDocReturnCheckRule, PhpDocVarCheckRule, StrictTypesRule, TypeMismatchRule,
+    ConsistentReturnRule, ForceReturnTypeRule, MissingArgumentRule, MissingReturnRule,
+    PhpDocParamCheckRule, PhpDocReturnCheckRule, PhpDocVarCheckRule, StrictTypesRule,
+    TypeMismatchRule,
 };
 
 pub trait DiagnosticRule {
