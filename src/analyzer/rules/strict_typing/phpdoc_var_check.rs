@@ -19,7 +19,8 @@ impl PhpDocVarCheckRule {
                 "string" => Some(TypeHint::String),
                 "bool" | "boolean" => Some(TypeHint::Bool),
                 "float" | "double" => Some(TypeHint::Float),
-                _ => None,
+                // Anything else is treated as an object type (class/interface name)
+                _ => Some(TypeHint::Object(s.clone())),
             },
             TypeExpression::Nullable(inner) => Self::type_expression_to_hint(inner),
             _ => None,
@@ -74,12 +75,13 @@ impl DiagnosticRule for PhpDocVarCheckRule {
                                                         _ => "unknown".to_string(),
                                                     };
 
-                                                    let actual_name = match actual_type {
-                                                        TypeHint::Int => "int",
-                                                        TypeHint::String => "string",
-                                                        TypeHint::Bool => "bool",
-                                                        TypeHint::Float => "float",
-                                                        _ => "unknown",
+                                                    let actual_name = match &actual_type {
+                                                        TypeHint::Int => "int".to_string(),
+                                                        TypeHint::String => "string".to_string(),
+                                                        TypeHint::Bool => "bool".to_string(),
+                                                        TypeHint::Float => "float".to_string(),
+                                                        TypeHint::Object(name) => name.clone(),
+                                                        _ => "unknown".to_string(),
                                                     };
 
                                                     diagnostics.push(diagnostic_for_node(

@@ -1,0 +1,1 @@
+strict_typing/phpdoc_param_check | 13 | @param type 'User' conflicts with native type hint 'Admin' for parameter $user

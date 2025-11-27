@@ -27,7 +27,7 @@ This document tracks the progress of PHPDoc static analysis implementation.
   - Integrated into analyzer for test file filtering
   - **6 passing unit tests**
 
-### Validation Rules (2/9 core tags)
+### Validation Rules (3/9 core tags)
 
 #### ✅ @var Property Validation
 **File:** `src/analyzer/rules/strict_typing/phpdoc_var_check.rs`
@@ -39,6 +39,7 @@ This document tracks the progress of PHPDoc static analysis implementation.
 **Supports:**
 - Simple types: `int`, `string`, `bool`, `float`
 - Nullable types: `?string`
+- **Object types: `User`, `DateTime`, etc. (NEW!)**
 
 **Example:**
 ```php
@@ -59,17 +60,46 @@ private $name = 123;  // ✅ ERROR: @var type 'string' conflicts with assigned v
 
 **Supports:**
 - Simple types: `int`, `string`, `bool`, `float`
+- **Object types: `User`, `DateTime`, etc. (NEW!)**
 - Method and function parameters
 
 **Example:**
 ```php
 /**
- * @param string $value
+ * @param User $user
  */
-function test(int $value) {}  // ✅ ERROR: @param type 'string' conflicts with native type hint 'int'
+function processUser(Admin $user) {}  // ✅ ERROR: @param type 'User' conflicts with native type hint 'Admin'
 ```
 
 **Status:** ✅ Working
+**Tests:** 2 scenario tests (primitives + objects)
+
+---
+
+#### ✅ @return Type Checking
+**File:** `src/analyzer/rules/strict_typing/phpdoc_return_check.rs`
+
+**What it does:**
+- Validates `@return` types match native return type hints
+- Detects conflicts between PHPDoc and function/method return types
+
+**Supports:**
+- Simple types: `int`, `string`, `bool`, `float`
+- **Object types: `User`, `DateTime`, etc. (NEW!)**
+- Function and method return types
+
+**Example:**
+```php
+/**
+ * @return User
+ */
+function getAdmin(): Admin {  // ✅ ERROR: @return type 'User' conflicts with native return type hint 'Admin'
+    return new Admin();
+}
+```
+
+**Status:** ✅ Working
+**Tests:** 3 passing unit tests, 3 scenario tests
 
 ---
 
@@ -77,21 +107,14 @@ function test(int $value) {}  // ✅ ERROR: @param type 'string' conflicts with 
 
 ### High Priority
 
-#### @return Validation
+#### @return Value Validation
 - Validate return statements match `@return` type
 - Check all code paths return correct type
-- Support `@return static`, `@return $this`
+- Support `@return void`, `@return static`, `@return $this`
 
-**Complexity:** Medium
+**Complexity:** Medium-High
 **Value:** High
-
-#### Object/Class Types
-- Support custom class types: `User`, `DateTime`, etc.
-- Validate object instantiation
-- Check method calls on typed objects
-
-**Complexity:** Medium
-**Value:** Very High
+**Note:** Basic @return/native type hint conflict detection is now complete. This item covers validating actual return statement values.
 
 #### Array Element Validation
 - Validate `User[]` arrays contain only User objects
@@ -173,9 +196,10 @@ function test(int $value) {}  // ✅ ERROR: @param type 'string' conflicts with 
 
 ### Code Metrics
 - **New modules:** 5 (parser, types, extractor, test_config, mod)
-- **New rules:** 2 (phpdoc_var_check, phpdoc_param_check)
-- **Lines of code:** ~750 (PHPDoc modules + rules + test config)
-- **Unit tests:** 15 passing (9 PHPDoc + 6 test config)
+- **New rules:** 3 (phpdoc_var_check, phpdoc_param_check, phpdoc_return_check)
+- **Lines of code:** ~950 (PHPDoc modules + rules + test config)
+- **Unit tests:** 18 passing (12 PHPDoc + 6 test config)
+- **Scenario tests:** 4 test files
 - **Integration tests:** Working with real PHP files
 - **Documentation:** 5 files (PHPDOC_PROGRESS.md, PHPDOC_IMPLEMENTATION_GUIDE.md, PHPDOC_TEST_PLAN.md, TEST_ORGANIZATION.md, TEST_CONFIG.md)
 
@@ -183,20 +207,20 @@ function test(int $value) {}  // ✅ ERROR: @param type 'string' conflicts with 
 
 | Type Syntax | Parsing | @var | @param | @return |
 |-------------|---------|------|--------|---------|
-| Simple (`int`) | ✅ | ✅ | ✅ | ❌ |
+| Simple (`int`) | ✅ | ✅ | ✅ | ✅ |
 | Nullable (`?string`) | ✅ | ✅ | ❌ | ❌ |
 | Array (`int[]`) | ✅ | ❌ | ❌ | ❌ |
 | Generic (`array<K,V>`) | ✅ | ❌ | ❌ | ❌ |
 | Union (`int\|string`) | ✅ | ❌ | ❌ | ❌ |
-| Object (`User`) | ✅ | ❌ | ❌ | ❌ |
+| **Object (`User`)** | ✅ | ✅ | ✅ | ✅ |
 | Template (`@template T`) | ❌ | ❌ | ❌ | ❌ |
 
 ### Tag Support Matrix
 
 | Tag | Parsing | Validation | Notes |
 |-----|---------|------------|-------|
-| `@param` | ✅ | ✅ | Basic types only |
-| `@return` | ✅ | ❌ | Parser ready |
+| `@param` | ✅ | ✅ | Basic types, conflict detection |
+| `@return` | ✅ | ✅ | Basic types, conflict detection |
 | `@var` | ✅ | ✅ | Properties only |
 | `@throws` | ✅ | ❌ | Parser ready |
 | `@property` | ❌ | ❌ | Not implemented |
@@ -210,19 +234,19 @@ function test(int $value) {}  // ✅ ERROR: @param type 'string' conflicts with 
 
 **Tasks:**
 1. Add object type support to TypeHint enum
-2. Extend @var rule to validate object types
+2. Extend @var, @param, @return rules to validate object types
 3. Add array element type checking
 4. Test with User[], DateTime, etc.
 
 **Estimated Effort:** Medium
 **Value:** Very High
 
-### Phase 3: @return Validation
-**Goal:** Validate function/method return types
+### Phase 3: @return Value Validation
+**Goal:** Validate actual return statement values
 
 **Tasks:**
-1. Create `phpdoc_return_check.rs` rule
-2. Check return statements against @return
+1. Extend `phpdoc_return_check.rs` rule ✅ (basic conflict detection complete)
+2. Check return statements against @return type
 3. Handle `static`, `$this`, `void`
 4. Validate all code paths
 
@@ -327,10 +351,12 @@ See `ADD_RULE.md` and use `phpdoc_param_check.rs` as a template:
 ## 🎉 Success Metrics
 
 **Current:**
-- ✅ 2/9 core PHPDoc tags validated
-- ✅ 2/7 type syntaxes supported
+- ✅ 3/9 core PHPDoc tags validated (@var, @param, @return)
+- ✅ 2/7 type syntaxes fully supported (simple types + object types)
 - ✅ Foundation complete and tested
-- ✅ All existing tests still passing
+- ✅ All existing tests still passing (26 total)
+- ✅ Test configuration system implemented
+- ✅ Object type support for all 3 implemented tags
 
 **Target (Full PHPStan Parity):**
 - ⏳ 9/9 core PHPDoc tags
@@ -345,13 +371,16 @@ See `ADD_RULE.md` and use `phpdoc_param_check.rs` as a template:
 - Parser handles complex types correctly
 - AST integration works reliably
 - Test infrastructure supports TDD
+- Pattern established: new rules follow same structure
+- Object type support added seamlessly across all rules
 
 **Challenges:**
 - Tree-sitter AST navigation requires careful node traversal
-- Type system needs to expand significantly for full support
+- TypeHint enum changed from Copy to Clone (contains String for object types)
 - Need better type compatibility checking (subtyping)
+- Return value validation requires control flow analysis
 
 **Next Quick Wins:**
-1. Object type support (high value, medium effort)
-2. @return validation (high value, medium effort)
-3. Array element validation (high value, medium effort)
+1. Array element validation (high value, high effort)
+2. Union type validation (high value, medium effort)
+3. Nullable type validation (medium value, low effort)

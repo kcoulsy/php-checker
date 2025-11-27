@@ -1,5 +1,5 @@
 use super::DiagnosticRule;
-use super::helpers::{child_by_kind, diagnostic_for_node, literal_type, node_text, walk_node, TypeHint};
+use super::helpers::{child_by_kind, diagnostic_for_node, node_text, type_hint_from_parameter, walk_node, TypeHint};
 use crate::analyzer::phpdoc::{extract_phpdoc_for_node, TypeExpression};
 use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{parser, Severity};
@@ -19,7 +19,8 @@ impl PhpDocParamCheckRule {
                 "string" => Some(TypeHint::String),
                 "bool" | "boolean" => Some(TypeHint::Bool),
                 "float" | "double" => Some(TypeHint::Float),
-                _ => None,
+                // Anything else is treated as an object type (class/interface name)
+                _ => Some(TypeHint::Object(s.clone())),
             },
             TypeExpression::Nullable(inner) => Self::type_expression_to_hint(inner),
             _ => None,
@@ -85,45 +86,47 @@ impl DiagnosticRule for PhpDocParamCheckRule {
                             if let Some(param_name) = Self::get_param_name(param_node, parsed) {
                                 // Check if there's a @param for this parameter
                                 if let Some(expected_type_expr) = param_types.get(&param_name) {
-                                    // Check if there's a native type hint
-                                    for j in 0..param_node.named_child_count() {
-                                        if let Some(type_node) = param_node.named_child(j) {
-                                            if type_node.kind() == "union_type" || type_node.kind() == "intersection_type" {
-                                                // Found a native type hint - check if it matches @param
-                                                if let Some(primitive) = child_by_kind(type_node, "primitive_type") {
-                                                    if let Some(native_type_str) = node_text(primitive, parsed) {
-                                                        let native_hint = match native_type_str.as_str() {
-                                                            "int" => Some(TypeHint::Int),
-                                                            "string" => Some(TypeHint::String),
-                                                            "bool" => Some(TypeHint::Bool),
-                                                            "float" => Some(TypeHint::Float),
-                                                            _ => None,
-                                                        };
+                                    // Get native type hint using helper
+                                    let native_hint = type_hint_from_parameter(param_node, parsed);
 
-                                                        let phpdoc_hint = Self::type_expression_to_hint(expected_type_expr);
+                                    // Skip if no native type hint
+                                    if native_hint == TypeHint::Unknown {
+                                        continue;
+                                    }
 
-                                                        // Check for conflict
-                                                        if let (Some(native), Some(phpdoc)) = (native_hint, phpdoc_hint) {
-                                                            if native != phpdoc {
-                                                                let expected_name = match expected_type_expr {
-                                                                    TypeExpression::Simple(s) => s.clone(),
-                                                                    _ => "unknown".to_string(),
-                                                                };
+                                    let phpdoc_hint = Self::type_expression_to_hint(expected_type_expr);
 
-                                                                diagnostics.push(diagnostic_for_node(
-                                                                    parsed,
-                                                                    primitive,
-                                                                    Severity::Error,
-                                                                    format!(
-                                                                        "@param type '{}' conflicts with native type hint '{}' for parameter ${}",
-                                                                        expected_name, native_type_str, param_name
-                                                                    ),
-                                                                ));
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
+                                    // Check for conflict
+                                    if let Some(phpdoc) = phpdoc_hint {
+                                        if native_hint != phpdoc {
+                                            let expected_name = match expected_type_expr {
+                                                TypeExpression::Simple(s) => s.clone(),
+                                                _ => "unknown".to_string(),
+                                            };
+
+                                            let native_type_str = match &native_hint {
+                                                TypeHint::Int => "int",
+                                                TypeHint::String => "string",
+                                                TypeHint::Bool => "bool",
+                                                TypeHint::Float => "float",
+                                                TypeHint::Object(name) => name.as_str(),
+                                                TypeHint::Unknown => "unknown",
+                                            };
+
+                                            // Find the type node for error reporting
+                                            let type_node = child_by_kind(param_node, "primitive_type")
+                                                .or_else(|| child_by_kind(param_node, "named_type"))
+                                                .unwrap_or(param_node);
+
+                                            diagnostics.push(diagnostic_for_node(
+                                                parsed,
+                                                type_node,
+                                                Severity::Error,
+                                                format!(
+                                                    "@param type '{}' conflicts with native type hint '{}' for parameter ${}",
+                                                    expected_name, native_type_str, param_name
+                                                ),
+                                            ));
                                         }
                                     }
                                 }

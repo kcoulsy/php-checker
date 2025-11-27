@@ -3,12 +3,13 @@ use crate::analyzer::{Diagnostic, Severity, Span};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeHint {
     Int,
     String,
     Bool,
     Float,
+    Object(String),  // Stores the class/interface name
     Unknown,
 }
 
@@ -232,14 +233,23 @@ pub fn collect_function_signatures(
 }
 
 pub fn type_hint_from_parameter(param: Node, parsed: &parser::ParsedSource) -> TypeHint {
+    // Check for primitive types
     if let Some(primitive) = find_descendant_by_kind(param, "primitive_type") {
         if let Some(text) = node_text(primitive, parsed) {
             return match text.as_str() {
                 "int" => TypeHint::Int,
                 "string" => TypeHint::String,
                 "bool" | "boolean" => TypeHint::Bool,
+                "float" | "double" => TypeHint::Float,
                 _ => TypeHint::Unknown,
             };
+        }
+    }
+
+    // Check for named types (classes/interfaces)
+    if let Some(named_type) = find_descendant_by_kind(param, "named_type") {
+        if let Some(text) = node_text(named_type, parsed) {
+            return TypeHint::Object(text);
         }
     }
 

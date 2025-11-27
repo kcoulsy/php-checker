@@ -67,8 +67,8 @@ impl DiagnosticRule for TypeMismatchRule {
                 }
 
                 if let Some((literal, literal_node)) = argument_literal_kind(argument_node) {
-                    let expected = signature.params[arg_index];
-                    if expected == TypeHint::Int && literal == LiteralKind::String {
+                    let expected = &signature.params[arg_index];
+                    if *expected == TypeHint::Int && literal == LiteralKind::String {
                         let start = literal_node.start_position();
                         let row = start.row + 1;
                         let column = start.column + 1;

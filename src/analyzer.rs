@@ -329,6 +329,7 @@ impl Analyzer {
             Box::new(rules::HardCodedKeysRule::new()),
             Box::new(rules::PhpDocVarCheckRule::new()),
             Box::new(rules::PhpDocParamCheckRule::new()),
+            Box::new(rules::PhpDocReturnCheckRule::new()),
         ];
 
         let config = config.unwrap_or_default();

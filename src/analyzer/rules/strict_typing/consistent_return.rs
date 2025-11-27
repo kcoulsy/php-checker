@@ -6,7 +6,7 @@ use crate::analyzer::project::ProjectContext;
 use crate::analyzer::{Severity, parser};
 use tree_sitter::Node;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ReturnType {
     Void,
     Typed(TypeHint),
@@ -57,9 +57,9 @@ impl DiagnosticRule for ConsistentReturnRule {
             }
 
             // Check if all return types are the same
-            let first_type = return_types[0].0;
+            let first_type = &return_types[0].0;
             for (return_type, return_node) in return_types.iter().skip(1) {
-                if !types_compatible(&first_type, return_type) {
+                if !types_compatible(first_type, return_type) {
                     let start = return_node.start_position();
                     let row = start.row + 1;
                     let column = start.column + 1;
@@ -143,6 +143,7 @@ fn type_description(return_type: &ReturnType) -> String {
         ReturnType::Typed(TypeHint::String) => "string".to_string(),
         ReturnType::Typed(TypeHint::Bool) => "bool".to_string(),
         ReturnType::Typed(TypeHint::Float) => "float".to_string(),
+        ReturnType::Typed(TypeHint::Object(class_name)) => class_name.clone(),
         ReturnType::Typed(TypeHint::Unknown) => "unknown".to_string(),
     }
 }

@@ -59,7 +59,7 @@ impl DiagnosticRule for ImpossibleComparisonRule {
             };
 
             let left_type = match var_types.get(&var_name) {
-                Some(ty) => *ty,
+                Some(ty) => ty.clone(),
                 None => return,
             };
 
