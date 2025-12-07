@@ -549,3 +549,133 @@ impl DiagnosticRule for PhpDocVarCheckRule {
         diagnostics
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_has_diagnostics, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_var_generic_array_conflict() {
+        let source = r#"<?php
+
+class Test {
+    /**
+     * @var array<string, int>
+     */
+    private $map = [
+        "key1" => 123,
+        999 => 456,
+        "key2" => "wrong"
+    ];
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        // Should detect: wrong key type (int 999 instead of string) and wrong value type (string "wrong" instead of int)
+        assert_has_diagnostics(&diagnostics, "generic array type conflicts");
+        
+        // Check that we have at least one error about key or value type conflict
+        let has_key_error = diagnostics.iter().any(|d| d.message.contains("key type"));
+        let has_value_error = diagnostics.iter().any(|d| d.message.contains("value type"));
+        assert!(
+            has_key_error || has_value_error,
+            "Expected errors about key or value type conflicts, but got: {:?}",
+            diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_var_generic_array_matches() {
+        let source = r#"<?php
+
+class Test {
+    /**
+     * @var array<string, int>
+     */
+    private $map = ["key1" => 123, "key2" => 456];
+
+    /**
+     * @var array<int, string>
+     */
+    private $names = [0 => "Alice", 1 => "Bob"];
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_var_object_array_conflict() {
+        let source = r#"<?php
+
+class User {
+    public $name;
+}
+
+class Admin {
+    public $role;
+}
+
+class TestObjectArrayConflict {
+    /**
+     * @var User[]
+     */
+    private $users = [new User(), new Admin()];
+
+    /**
+     * @var Admin[]
+     */
+    private $admins = [new User(), new Admin()];
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &[
+            "error: Array element type 'Admin' conflicts with expected element type 'User' for User[]",
+            "error: Array element type 'User' conflicts with expected element type 'Admin' for Admin[]",
+        ]);
+    }
+
+    #[test]
+    fn test_var_object_array_matches() {
+        let source = r#"<?php
+
+class User {
+    public $name;
+}
+
+class Admin {
+    public $role;
+}
+
+class TestObjectArrayMatches {
+    /**
+     * @var User[]
+     */
+    private $users = [new User(), new User()];
+
+    /**
+     * @var Admin[]
+     */
+    private $admins = [new Admin()];
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

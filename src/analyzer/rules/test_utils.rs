@@ -531,6 +531,53 @@ pub fn assert_fix_with_path<R>(
     assert_fix(rule, &parsed, input, expected);
 }
 
+/// Assert that at least one diagnostic was produced, with helpful output if none are found.
+///
+/// This is useful for tests where you expect some diagnostics but want better error messages
+/// when none are produced.
+///
+/// # Example
+/// ```rust
+/// use crate::analyzer::rules::test_utils::{parse_php, run_rule, assert_has_diagnostics};
+/// use crate::analyzer::rules::strict_typing::PhpDocReturnValueCheckRule;
+///
+/// let source = r#"<?php
+/// /**
+///  * @return array<string, int>
+///  */
+/// function test() {
+///     return [999 => "wrong"];
+/// }
+/// "#;
+///
+/// let parsed = parse_php(source);
+/// let rule = PhpDocReturnValueCheckRule::new();
+/// let diagnostics = run_rule(&rule, &parsed);
+///
+/// assert_has_diagnostics(&diagnostics, "generic array type conflicts");
+/// ```
+pub fn assert_has_diagnostics(diagnostics: &[Diagnostic], context: &str) {
+    if diagnostics.is_empty() {
+        let mut error_msg = String::new();
+        error_msg.push_str(&format!(
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
+        error_msg.push_str(&format!("Expected diagnostics for {}, but got none\n", context));
+        error_msg.push_str(&format!(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
+        error_msg.push_str("\nPossible reasons:\n");
+        error_msg.push_str("  - Rule may not be detecting the issue\n");
+        error_msg.push_str("  - PHPDoc may not be extracted correctly\n");
+        error_msg.push_str("  - Type conversion may be failing\n");
+        error_msg.push_str("  - Array element extraction may not be working\n");
+        error_msg.push_str(&format!(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
+        panic!("{}", error_msg);
+    }
+}
+
 /// Assert that a rule's fix produces the expected output when applied to input source,
 /// using a context that includes the parsed file.
 ///

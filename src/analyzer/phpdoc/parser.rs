@@ -123,15 +123,35 @@ impl PhpDocParser {
     /// Parse @return tag
     /// Format: @return Type [description]
     fn parse_return_tag(value: &str) -> Option<ReturnTag> {
-        let parts: Vec<&str> = value.splitn(2, char::is_whitespace).collect();
-        if parts.is_empty() {
-            return None;
-        }
-
-        let type_str = parts[0];
+        // Extract type by respecting angle brackets and braces
+        // We need to find the end of the type, which is the first whitespace
+        // that's not inside <> or {}
+        let type_str = Self::extract_type_from_tag(value);
         let type_expr = Self::parse_type_expression(type_str)?;
 
         Some(ReturnTag { type_expr })
+    }
+
+    /// Extract the type portion from a tag value, respecting nested brackets
+    /// Example: "array<string, int> Some description" -> "array<string, int>"
+    fn extract_type_from_tag(value: &str) -> &str {
+        let value = value.trim();
+        let mut depth: i32 = 0; // Track nesting depth for <> and {}
+
+        for (i, ch) in value.char_indices() {
+            match ch {
+                '<' | '{' => depth += 1,
+                '>' | '}' => depth = depth.saturating_sub(1),
+                c if c.is_whitespace() && depth == 0 => {
+                    // Found a space outside of brackets, this is the end of the type
+                    return &value[..i];
+                }
+                _ => {}
+            }
+        }
+
+        // No whitespace found outside brackets, entire value is the type
+        value
     }
 
     /// Parse @var tag

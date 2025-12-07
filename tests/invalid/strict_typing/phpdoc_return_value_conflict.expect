@@ -1,3 +1,0 @@
-error: Return value type 'string' conflicts with @return type 'int'
-error: Return value type 'int' conflicts with @return type 'string'
-error: Return value type 'string' conflicts with @return type 'bool'

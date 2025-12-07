@@ -335,8 +335,25 @@ impl DiagnosticRule for PhpDocReturnValueCheckRule {
                     return;
                 }
 
-                // Get the return value
-                if let Some(value_node) = ret_node.named_child(0) {
+                // Get the return value - use child_by_kind for more reliable detection
+                // This works for both single-line and multi-line arrays
+                let value_node = if let Some(array_node) = child_by_kind(ret_node, "array_creation_expression") {
+                    Some(array_node)
+                } else {
+                    // For non-array returns, find the first non-comment named child
+                    let mut found = None;
+                    for idx in 0..ret_node.named_child_count() {
+                        if let Some(child) = ret_node.named_child(idx) {
+                            if child.kind() != "comment" {
+                                found = Some(child);
+                                break;
+                            }
+                        }
+                    }
+                    found
+                };
+
+                if let Some(value_node) = value_node {
                     // Check if this is an array literal and we expect an array type
                     if value_node.kind() == "array_creation_expression"
                         && matches!(expected_type, TypeHint::Array(_) | TypeHint::GenericArray { .. })
@@ -386,5 +403,297 @@ impl DiagnosticRule for PhpDocReturnValueCheckRule {
         });
 
         diagnostics
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_has_diagnostics, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_return_array_conflict() {
+        let source = r#"<?php
+
+class TestReturnArrayConflict {
+    /**
+     * @return int[]
+     */
+    function getIntegers(): array {
+        return [1, "string", 3];
+    }
+
+    /**
+     * @return string[]
+     */
+    function getStrings(): array {
+        return ["hello", 123];
+    }
+
+    /**
+     * @return bool[]
+     */
+    function getFlags(): array {
+        return [true, "false"];
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &[
+            "error: Array element type 'string' conflicts with expected element type 'int' for @return type 'int[]'",
+            "error: Array element type 'int' conflicts with expected element type 'string' for @return type 'string[]'",
+            "error: Array element type 'string' conflicts with expected element type 'bool' for @return type 'bool[]'",
+        ]);
+    }
+
+    #[test]
+    fn test_return_array_matches() {
+        let source = r#"<?php
+
+class TestReturnArrayMatches {
+    /**
+     * @return int[]
+     */
+    function getIntegers(): array {
+        return [1, 2, 3];
+    }
+
+    /**
+     * @return string[]
+     */
+    function getStrings(): array {
+        return ["hello", "world"];
+    }
+
+    /**
+     * @return bool[]
+     */
+    function getFlags(): array {
+        return [true, false, true];
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_return_generic_array_conflict() {
+        let source = r#"<?php
+
+class Test {
+    /**
+     * @return array<string, int>
+     */
+    public function getMap() {
+        return [
+            "key1" => 123,
+            999 => 456,
+            "key2" => "wrong"
+        ];
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        // Should detect: wrong key type (int 999 instead of string) and wrong value type (string "wrong" instead of int)
+        assert_has_diagnostics(&diagnostics, "generic array type conflicts");
+        
+        // Check that we have at least one error about key or value type conflict
+        let has_key_error = diagnostics.iter().any(|d| d.message.contains("key type"));
+        let has_value_error = diagnostics.iter().any(|d| d.message.contains("value type"));
+        assert!(
+            has_key_error || has_value_error,
+            "Expected errors about key or value type conflicts, but got: {:?}",
+            diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_return_generic_array_matches() {
+        let source = r#"<?php
+
+class Test {
+    /**
+     * @return array<string, int>
+     */
+    public function getMap() {
+        return ["key1" => 123, "key2" => 456];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function getNames() {
+        return [0 => "Alice", 1 => "Bob"];
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_return_object_array_conflict() {
+        let source = r#"<?php
+
+class User {
+    public $name;
+}
+
+class Admin {
+    public $role;
+}
+
+class TestReturnObjectArrayConflict {
+    /**
+     * @return User[]
+     */
+    function getUsers(): array {
+        return [new User(), new Admin()];
+    }
+
+    /**
+     * @return Admin[]
+     */
+    function getAdmins(): array {
+        return [new User(), new Admin()];
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &[
+            "error: Array element type 'Admin' conflicts with expected element type 'User' for @return type 'User[]'",
+            "error: Array element type 'User' conflicts with expected element type 'Admin' for @return type 'Admin[]'",
+        ]);
+    }
+
+    #[test]
+    fn test_return_object_array_matches() {
+        let source = r#"<?php
+
+class User {
+    public $name;
+}
+
+class Admin {
+    public $role;
+}
+
+class TestReturnObjectArrayMatches {
+    /**
+     * @return User[]
+     */
+    function getUsers(): array {
+        return [new User(), new User()];
+    }
+
+    /**
+     * @return Admin[]
+     */
+    function getAdmins(): array {
+        return [new Admin()];
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_return_value_conflict() {
+        let source = r#"<?php
+
+class TestReturnValueConflict {
+    /**
+     * @return int
+     */
+    function getNumber(): int {
+        return "not a number";
+    }
+
+    /**
+     * @return string
+     */
+    function getName(): string {
+        return 123;
+    }
+
+    /**
+     * @return bool
+     */
+    function isValid(): bool {
+        return "yes";
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &[
+            "error: Return value type 'string' conflicts with @return type 'int'",
+            "error: Return value type 'int' conflicts with @return type 'string'",
+            "error: Return value type 'string' conflicts with @return type 'bool'",
+        ]);
+    }
+
+    #[test]
+    fn test_return_value_matches() {
+        let source = r#"<?php
+
+class TestReturnValueMatches {
+    /**
+     * @return int
+     */
+    function getNumber(): int {
+        return 42;
+    }
+
+    /**
+     * @return string
+     */
+    function getName(): string {
+        return "Alice";
+    }
+
+    /**
+     * @return bool
+     */
+    function isValid(): bool {
+        return true;
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
     }
 }
