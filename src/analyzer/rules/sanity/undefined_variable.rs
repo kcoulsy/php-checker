@@ -221,4 +221,151 @@ echo divide(10, 2);
 
         assert_no_diagnostics(&diagnostics);
     }
+
+    #[test]
+    fn test_class_properties() {
+        let source = r#"<?php
+
+class User {
+    public $name = "John";
+    public $email = null;
+    private $password;
+    protected $roles = [];
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UndefinedVariableRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_catch_clause_variables() {
+        let source = r#"<?php
+
+function handleError() {
+    try {
+        throw new Exception("Error");
+    } catch (Exception $e) {
+        echo $e->getMessage();
+    }
+}
+
+function multipleCatch() {
+    try {
+        // something
+    } catch (RuntimeException $re) {
+        echo $re->getMessage();
+    } catch (Exception $ex) {
+        echo $ex->getMessage();
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UndefinedVariableRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_foreach_value() {
+        let source = r#"<?php
+
+function processArray() {
+    $items = [1, 2, 3];
+
+    foreach ($items as $item) {
+        echo $item;
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UndefinedVariableRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_foreach_key_value() {
+        let source = r#"<?php
+
+function processAssocArray() {
+    $data = ['name' => 'John', 'age' => 30];
+
+    foreach ($data as $key => $value) {
+        echo $key . ': ' . $value;
+    }
+}
+
+function processPhones() {
+    $phones = [
+        ['type' => 'mobile', 'number' => '123'],
+        ['type' => 'home', 'number' => '456']
+    ];
+
+    foreach ($phones as $index => $phone) {
+        echo $index . ': ' . $phone['type'];
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UndefinedVariableRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_combined_cases() {
+        let source = r#"<?php
+
+class FormContact {
+    public $originalEmail = null;
+    public $originalPhones = [];
+
+    public function updateContact() {
+        try {
+            foreach ($this->originalPhones as $index => $phone) {
+                $this->validatePhone($phone);
+            }
+        } catch (Exception $e) {
+            error_log($e->getMessage());
+        }
+    }
+
+    private function validatePhone($phone) {
+        // validation logic
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UndefinedVariableRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_actual_undefined() {
+        let source = r#"<?php
+
+function test() {
+    echo $undefinedVar;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UndefinedVariableRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &["error: undefined variable $undefinedVar at 4:10"]);
+    }
 }
