@@ -341,7 +341,6 @@ pub fn literal_type(node: Node) -> Option<TypeHint> {
         _ => None,
     };
     if result.is_none() {
-        eprintln!("DEBUG literal_type: Unknown node kind '{}' for literal", node.kind());
     }
     result
 }

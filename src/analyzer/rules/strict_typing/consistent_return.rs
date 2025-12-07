@@ -174,3 +174,140 @@ fn type_hint_to_string(hint: &TypeHint) -> String {
         TypeHint::Unknown => "unknown".to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_inconsistent_return_types() {
+        let source = r#"<?php
+function test() {
+    return 1;
+    return "string";
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = ConsistentReturnRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert!(!diagnostics.is_empty());
+        assert!(diagnostics[0].message.contains("inconsistent return type"));
+    }
+
+    #[test]
+    fn test_consistent_return_file() {
+        // Test from tests/invalid/strict_typing/consistent_return.php
+        let source = r#"<?php
+
+// php-checker-ignore: strict_typing/force_return_type,strict_typing/missing_return,control_flow/unreachable
+
+// Function with inconsistent return types - should trigger error
+function inconsistentReturns(bool $flag) {
+    if ($flag) {
+        return 42;  // returns int
+    } else {
+        return "hello";  // returns string - inconsistent!
+    }
+}
+
+// Function with consistent return types - should be OK
+function consistentReturns(bool $flag) {
+    if ($flag) {
+        return 42;
+    } else {
+        return 24;
+    }
+}
+
+// Function with mixed types including void - should trigger error
+function mixedVoidReturns(bool $flag) {
+    if ($flag) {
+        return 42;  // returns int
+    }
+    // implicit void return - inconsistent!
+}
+
+// Function with only void returns - should be OK
+function voidReturns(bool $flag) {
+    if ($flag) {
+        return;  // explicit void
+    }
+    // implicit void return
+}
+
+// Function with only one return - should be OK
+function singleReturn() {
+    return "single";
+}
+
+// Function with boolean returns - should be OK
+function booleanReturns(bool $flag) {
+    if ($flag) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+inconsistentReturns(true);
+consistentReturns(true);
+mixedVoidReturns(true);
+voidReturns(true);
+singleReturn();
+booleanReturns(true);
+"#;
+
+        let parsed = parse_php(source);
+        let rule = ConsistentReturnRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        // Expected: error: inconsistent return type: expected int, found string at 10:9
+        assert_diagnostics_exact(&diagnostics, &["error: inconsistent return type: expected int, found string at 10:9"]);
+    }
+
+    #[test]
+    fn test_consistent_return_types_valid() {
+        // Test valid cases - consistent return types should not trigger errors
+        let source = r#"<?php
+// Function with consistent return types - should be OK
+function consistentReturns(bool $flag) {
+    if ($flag) {
+        return 42;
+    } else {
+        return 24;
+    }
+}
+
+// Function with only void returns - should be OK
+function voidReturns(bool $flag) {
+    if ($flag) {
+        return;  // explicit void
+    }
+    // implicit void return
+}
+
+// Function with only one return - should be OK
+function singleReturn() {
+    return "single";
+}
+
+// Function with boolean returns - should be OK
+function booleanReturns(bool $flag) {
+    if ($flag) {
+        return true;
+    } else {
+        return false;
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = ConsistentReturnRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

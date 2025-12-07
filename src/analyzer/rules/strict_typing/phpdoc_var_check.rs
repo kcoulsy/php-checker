@@ -151,10 +151,8 @@ impl PhpDocVarCheckRule {
         parsed: &parser::ParsedSource,
         diagnostics: &mut Vec<crate::analyzer::Diagnostic>,
     ) {
-        eprintln!("DEBUG check_array_elements: expected_type = {:?}", expected_type);
         // Check if this is a shaped array type
         if let TypeHint::ShapedArray(expected_fields) = expected_type {
-            eprintln!("DEBUG: Calling check_shaped_array_elements");
             Self::check_shaped_array_elements(
                 array_node,
                 expected_fields,
@@ -171,7 +169,6 @@ impl PhpDocVarCheckRule {
             value: expected_value,
         } = expected_type
         {
-            eprintln!("DEBUG: Calling check_generic_array_elements");
             Self::check_generic_array_elements(
                 array_node,
                 expected_key,
@@ -239,13 +236,10 @@ impl PhpDocVarCheckRule {
         parsed: &parser::ParsedSource,
         diagnostics: &mut Vec<crate::analyzer::Diagnostic>,
     ) {
-        eprintln!("DEBUG check_generic_array_elements: expected_key={:?}, expected_value={:?}", expected_key, expected_value);
         let pairs = extract_array_key_value_pairs(array_node, parsed);
-        eprintln!("DEBUG: Got {} pairs from extract_array_key_value_pairs", pairs.len());
         let array_type_name = Self::type_expression_to_string(type_expr);
 
         for (key_node_opt, key_type_opt, value_node, value_type_opt) in pairs {
-            eprintln!("DEBUG: Pair - key_type={:?}, value_type={:?}", key_type_opt, value_type_opt);
             // Check key type
             if let Some(key_type) = key_type_opt {
                 if key_type == TypeHint::Unknown {
@@ -317,7 +311,6 @@ impl PhpDocVarCheckRule {
         parsed: &parser::ParsedSource,
         diagnostics: &mut Vec<crate::analyzer::Diagnostic>,
     ) {
-        eprintln!("DEBUG check_shaped_array_elements: expected {} fields", expected_fields.len());
         let array_type_name = Self::type_expression_to_string(type_expr);
 
         // Extract all key-value pairs from the array
@@ -338,11 +331,9 @@ impl PhpDocVarCheckRule {
             }
         }
 
-        eprintln!("DEBUG: Found {} actual fields", actual_fields.len());
 
         // Check each expected field
         for (expected_name, expected_type) in expected_fields {
-            eprintln!("DEBUG: Checking field '{}'", expected_name);
 
             if let Some((value_node, value_type_opt)) = actual_fields.get(expected_name) {
                 // Field exists, check its type
@@ -418,7 +409,6 @@ impl DiagnosticRule for PhpDocVarCheckRule {
         _context: &ProjectContext,
     ) -> Vec<crate::analyzer::Diagnostic> {
         let mut diagnostics = Vec::new();
-        eprintln!("DEBUG phpdoc_var_check: Starting run");
 
         // Check class properties with @var tags
         walk_node(parsed.tree.root_node(), &mut |node| {
@@ -429,7 +419,6 @@ impl DiagnosticRule for PhpDocVarCheckRule {
             // Extract @var PHPDoc
             if let Some(phpdoc) = extract_phpdoc_for_node(node, parsed) {
                 if let Some(var_tag) = phpdoc.var_tag {
-                    eprintln!("DEBUG: Found @var tag: {:?}", var_tag);
                     // Find the property initializer
                     for i in 0..node.named_child_count() {
                         if let Some(child) = node.named_child(i) {
@@ -440,10 +429,8 @@ impl DiagnosticRule for PhpDocVarCheckRule {
                                 {
                                     // Get the value node (skip the = sign)
                                     if let Some(value_node) = initializer.named_child(0) {
-                                        eprintln!("DEBUG: value_node kind = {}", value_node.kind());
                                         // Check if it's an array and validate elements
                                         if value_node.kind() == "array_creation_expression" {
-                                            eprintln!("DEBUG: Is array_creation_expression, checking elements");
                                             if let Some(expected_type) =
                                                 Self::type_expression_to_hint(&var_tag.type_expr)
                                             {

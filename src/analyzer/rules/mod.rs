@@ -10,6 +10,8 @@ pub mod psr4;
 pub mod sanity;
 pub mod security;
 pub mod strict_typing;
+#[cfg(test)]
+pub mod test_utils;
 
 pub use api::{DeprecatedApiRule, InvalidThisRule};
 pub use cleanup::{UnusedUseRule, UnusedVariableRule};

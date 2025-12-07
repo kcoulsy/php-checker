@@ -52,3 +52,80 @@ impl DiagnosticRule for ForceReturnTypeRule {
         diagnostics
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_force_return_type_file() {
+        // Test from tests/invalid/strict_typing/force_return_type.php
+        let source = r#"<?php
+
+// Function without return type - should trigger warning
+function noReturnType() {
+    return 42;
+}
+
+// Function with void return type - should be OK
+function withVoidReturnType(): void {
+    // no return needed
+}
+
+// Function with int return type - should be OK
+function withIntReturnType(): int {
+    return 42;
+}
+
+// Function with string return type - should be OK
+function withStringReturnType(): string {
+    return "hello";
+}
+
+noReturnType();
+withVoidReturnType();
+withIntReturnType();
+withStringReturnType();
+"#;
+
+        let parsed = parse_php(source);
+        let rule = ForceReturnTypeRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        // Expected: warning: function noReturnType should have an explicit return type at 4:10
+        assert_diagnostics_exact(&diagnostics, &["warning: function noReturnType should have an explicit return type at 4:10"]);
+    }
+
+    #[test]
+    fn test_force_return_type_valid() {
+        // Test valid cases - functions with return types should not trigger warnings
+        let source = r#"<?php
+// Function with void return type - should be OK
+function withVoidReturnType(): void {
+    // no return needed
+}
+
+// Function with int return type - should be OK
+function withIntReturnType(): int {
+    return 42;
+}
+
+// Function with string return type - should be OK
+function withStringReturnType(): string {
+    return "hello";
+}
+
+// Function with bool return type - should be OK
+function withBoolReturnType(): bool {
+    return true;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = ForceReturnTypeRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

@@ -72,3 +72,57 @@ impl DiagnosticRule for MissingArgumentRule {
         diagnostics
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule_with_context};
+
+    #[test]
+    fn test_missing_argument_file() {
+        // Test from tests/invalid/strict_typing/missing_argument.php
+        let source = r#"<?php
+
+function takesTwo(int $a, int $b): void
+{
+}
+
+takesTwo(1);
+
+"#;
+
+        let rule = MissingArgumentRule::new();
+        let diagnostics = run_rule_with_context(&rule, source);
+
+        // Expected: error: missing required argument 2 for takesTwo
+        assert_diagnostics_exact(&diagnostics, &["error: missing required argument 2 for takesTwo"]);
+    }
+
+    #[test]
+    fn test_missing_argument_valid() {
+        // Test valid cases - all arguments provided should not trigger errors
+        let source = r#"<?php
+function takesTwo(int $a, int $b): void
+{
+}
+
+function takesOne(int $a): void
+{
+}
+
+function takesNone(): void
+{
+}
+
+// All arguments provided - should be OK
+takesTwo(1, 2);
+takesOne(1);
+takesNone();
+"#;
+
+        let rule = MissingArgumentRule::new();
+        let diagnostics = run_rule_with_context(&rule, source);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}
