@@ -55,3 +55,49 @@ impl DiagnosticRule for DuplicateDeclarationRule {
         diagnostics
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_duplicate_declaration() {
+        let source = r#"<?php
+
+function helper(): void
+{
+}
+
+function helper(): void
+{
+}
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = DuplicateDeclarationRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &["error: duplicate declaration of \"helper\""]);
+    }
+
+    #[test]
+    fn test_duplicate_declaration_valid() {
+        let source = r#"<?php
+function helper1(): void
+{
+}
+
+function helper2(): void
+{
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = DuplicateDeclarationRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

@@ -170,3 +170,55 @@ impl<'a> ScopeVisitor<'a> {
         ));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_undefined_variable() {
+        let source = r#"<?php
+
+function divide(int $a, int $b): int
+{
+    if ($b === 0) {
+        return 0;
+    }
+
+    return $a / $c;
+}
+
+echo divide(10, 2);
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UndefinedVariableRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &["error: undefined variable $c at 11:17"]);
+    }
+
+    #[test]
+    fn test_undefined_variable_valid() {
+        let source = r#"<?php
+function divide(int $a, int $b): int
+{
+    if ($b === 0) {
+        return 0;
+    }
+
+    return $a / $b;
+}
+
+echo divide(10, 2);
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UndefinedVariableRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

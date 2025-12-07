@@ -530,3 +530,82 @@ pub fn assert_fix_with_path<R>(
     let parsed = parse_php_with_path(input, path);
     assert_fix(rule, &parsed, input, expected);
 }
+
+/// Assert that a rule's fix produces the expected output when applied to input source,
+/// using a context that includes the parsed file.
+///
+/// This is useful for rules that need to resolve symbols defined in the same file.
+///
+/// # Example
+/// ```rust
+/// use crate::analyzer::rules::test_utils::assert_fix_with_context;
+/// use crate::analyzer::rules::cleanup::UnusedUseRule;
+///
+/// let input = r#"<?php
+/// use Multi\Service as Svc;
+/// use Multi\Client;
+/// Svc\takesTwo(1);
+/// "#;
+///
+/// let expected = r#"<?php
+/// use Multi\Service as Svc;
+/// Svc\takesTwo(1);
+/// "#;
+///
+/// let rule = UnusedUseRule::new();
+/// assert_fix_with_context(&rule, input, expected);
+/// ```
+pub fn assert_fix_with_context<R>(
+    rule: &R,
+    input: &str,
+    expected: &str,
+) where
+    R: crate::analyzer::rules::DiagnosticRule,
+{
+    let edits = run_fix_with_context(rule, input);
+    let actual = fix::apply_text_edits(input, &edits);
+
+    if actual != expected {
+        let mut error_msg = String::new();
+        error_msg.push_str(&format!(
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
+        error_msg.push_str("Fix output mismatch\n");
+        error_msg.push_str(&format!(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
+        
+        error_msg.push_str("\nExpected output:\n");
+        error_msg.push_str(&format!("```php\n{}\n```\n", expected));
+        
+        error_msg.push_str("\nActual output:\n");
+        error_msg.push_str(&format!("```php\n{}\n```\n", actual));
+        
+        // Show diff-like output
+        error_msg.push_str("\nDifferences:\n");
+        let expected_lines: Vec<&str> = expected.lines().collect();
+        let actual_lines: Vec<&str> = actual.lines().collect();
+        
+        let max_lines = expected_lines.len().max(actual_lines.len());
+        for i in 0..max_lines {
+            let expected_line = expected_lines.get(i).copied().unwrap_or("");
+            let actual_line = actual_lines.get(i).copied().unwrap_or("");
+            
+            if expected_line != actual_line {
+                error_msg.push_str(&format!("  Line {}:\n", i + 1));
+                if !expected_line.is_empty() {
+                    error_msg.push_str(&format!("    - {}\n", expected_line));
+                }
+                if !actual_line.is_empty() {
+                    error_msg.push_str(&format!("    + {}\n", actual_line));
+                }
+            }
+        }
+        
+        error_msg.push_str(&format!(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
+        
+        panic!("{}", error_msg);
+    }
+}

@@ -147,3 +147,63 @@ fn is_parameter_definition(node: Node) -> bool {
         })
         .unwrap_or(false)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_fix, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_unused_variable() {
+        let source = r#"<?php
+
+$unused = 42;
+
+echo "Done";
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UnusedVariableRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &["error: unused variable $unused"]);
+    }
+
+    #[test]
+    fn test_unused_variable_fix() {
+        let input = r#"<?php
+
+$unused = 42;
+
+echo "Done";
+
+"#;
+
+        let expected = r#"<?php
+
+
+echo "Done";
+
+"#;
+
+        let parsed = parse_php(input);
+        let rule = UnusedVariableRule::new();
+        assert_fix(&rule, &parsed, input, expected);
+    }
+
+    #[test]
+    fn test_unused_variable_valid() {
+        let source = r#"<?php
+$used = 42;
+
+echo $used;
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UnusedVariableRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

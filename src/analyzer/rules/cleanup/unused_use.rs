@@ -95,3 +95,65 @@ fn unused_aliases<'a>(
         .filter(|(alias, _)| !alias.starts_with('_'))
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_fix_with_context, assert_no_diagnostics, parse_php, run_rule, run_rule_with_context};
+
+    #[test]
+    fn test_unused_use() {
+        let source = r#"<?php
+
+use Multi\Service as Svc;
+use Multi\Client;
+
+Svc\takesTwo(1);
+
+"#;
+
+        let rule = UnusedUseRule::new();
+        let diagnostics = run_rule_with_context(&rule, source);
+
+        assert_diagnostics_exact(&diagnostics, &["warning: unused import alias `Client`"]);
+    }
+
+    #[test]
+    fn test_unused_use_fix() {
+        let input = r#"<?php
+
+use Multi\Service as Svc;
+use Multi\Client;
+
+Svc\takesTwo(1);
+
+"#;
+
+        let expected = r#"<?php
+
+use Multi\Service as Svc;
+
+Svc\takesTwo(1);
+
+"#;
+
+        let rule = UnusedUseRule::new();
+        assert_fix_with_context(&rule, input, expected);
+    }
+
+    #[test]
+    fn test_unused_use_valid() {
+        let source = r#"<?php
+
+use Multi\Service as Svc;
+
+Svc\takesTwo(1);
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UnusedUseRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

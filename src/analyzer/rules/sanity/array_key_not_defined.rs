@@ -165,3 +165,42 @@ fn extract_element_key<'a>(node: Node<'a>, parsed: &'a parser::ParsedSource) -> 
 fn literal_string_value(node: Node, parsed: &parser::ParsedSource) -> Option<String> {
     node_text(node, parsed).map(|text| text.trim_matches(|c| c == '\'' || c == '"').to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_array_key_not_defined() {
+        let source = r#"<?php
+
+$data = [];
+
+echo $data['missing'];
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = ArrayKeyNotDefinedRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &["error: undefined array key 'missing' at 5:12"]);
+    }
+
+    #[test]
+    fn test_array_key_not_defined_valid() {
+        let source = r#"<?php
+$data = ['key1' => 'value1', 'key2' => 'value2'];
+
+echo $data['key1'];
+echo $data['key2'];
+"#;
+
+        let parsed = parse_php(source);
+        let rule = ArrayKeyNotDefinedRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}
