@@ -117,3 +117,76 @@ impl<'a> UnreachableStatementVisitor<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_unreachable_statement() {
+        let source = r#"<?php
+
+function test_impossible_break(): void {
+    $value = 1;
+    switch ($value) {
+        case 1:
+            echo "one";
+            break;
+            break;
+        case 2:
+            echo "two";
+            return;
+            break;
+    }
+}
+
+function test_impossible_return(): void {
+    $value = 1;
+    switch ($value) {
+        case 1:
+            echo "one";
+            return;
+            return;
+        case 2:
+            echo "two";
+            return;
+    }
+}
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UnreachableStatementRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &[
+            "warning: unreachable break statement",
+            "warning: unreachable break statement",
+            "warning: unreachable return statement",
+        ]);
+    }
+
+    #[test]
+    fn test_unreachable_statement_valid() {
+        let source = r#"<?php
+function test_valid(): void {
+    $value = 1;
+    switch ($value) {
+        case 1:
+            echo "one";
+            break;
+        case 2:
+            echo "two";
+            return;
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UnreachableStatementRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

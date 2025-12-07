@@ -1,5 +1,0 @@
-error: function test_impossible_break is missing a return on some paths at 5:10
-error: function test_impossible_return is missing a return on some paths at 26:10
-warning: unreachable break statement
-warning: unreachable break statement
-warning: unreachable return statement

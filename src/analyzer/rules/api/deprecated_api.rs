@@ -53,3 +53,42 @@ impl DiagnosticRule for DeprecatedApiRule {
         diagnostics
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_deprecated_api() {
+        let source = r#"<?php
+
+mysql_connect('localhost', 'user', 'pass');
+create_function('$a', 'return $a;');
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = DeprecatedApiRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &[
+            "warning: mysql_connect is deprecated; use modern alternatives",
+            "warning: create_function is deprecated; use modern alternatives",
+        ]);
+    }
+
+    #[test]
+    fn test_deprecated_api_valid() {
+        let source = r#"<?php
+mysqli_connect('localhost', 'user', 'pass');
+$func = function($a) { return $a; };
+"#;
+
+        let parsed = parse_php(source);
+        let rule = DeprecatedApiRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

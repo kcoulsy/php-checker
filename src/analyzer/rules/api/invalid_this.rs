@@ -80,3 +80,52 @@ impl DiagnosticRule for InvalidThisRule {
         diagnostics
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_invalid_this() {
+        let source = r#"<?php
+
+function global_this() {
+    return $this;
+}
+
+class Example {
+    public static function build() {
+        return $this;
+    }
+}
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = InvalidThisRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &[
+            "error: $this is not allowed outside of class scope",
+            "error: $this cannot be used in static context",
+        ]);
+    }
+
+    #[test]
+    fn test_invalid_this_valid() {
+        let source = r#"<?php
+class Example {
+    public function instanceMethod() {
+        return $this;
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = InvalidThisRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

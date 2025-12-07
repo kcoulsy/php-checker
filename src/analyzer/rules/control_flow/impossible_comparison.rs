@@ -82,3 +82,45 @@ impl DiagnosticRule for ImpossibleComparisonRule {
         diagnostics
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_impossible_comparison() {
+        let source = r#"<?php
+
+$flag = true;
+
+if ($flag === 5) {
+    echo "never happens";
+}
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = ImpossibleComparisonRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &["error: comparison \"$flag === 5\" is always false due to type difference"]);
+    }
+
+    #[test]
+    fn test_impossible_comparison_valid() {
+        let source = r#"<?php
+$flag = true;
+
+if ($flag === true) {
+    echo "happens";
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = ImpossibleComparisonRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

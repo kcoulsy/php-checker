@@ -63,3 +63,53 @@ impl DiagnosticRule for RedundantConditionRule {
         diagnostics
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_redundant_condition() {
+        let source = r#"<?php
+
+$value = 10;
+
+if ($value > 5) {
+    echo "first branch";
+}
+
+if ($value > 5) {
+    echo "redundant branch";
+}
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = RedundantConditionRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &["error: redundant condition \"$value > 5\" repeats an earlier guard"]);
+    }
+
+    #[test]
+    fn test_redundant_condition_valid() {
+        let source = r#"<?php
+$value = 10;
+
+if ($value > 5) {
+    echo "first branch";
+}
+
+if ($value > 15) {
+    echo "different branch";
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = RedundantConditionRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

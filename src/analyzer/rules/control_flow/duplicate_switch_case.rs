@@ -108,3 +108,65 @@ fn literal_case_value(node: Node, parsed: &parser::ParsedSource) -> Option<(Stri
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_duplicate_switch_case() {
+        let source = r#"<?php
+
+$value = 'alpha';
+
+switch ($value) {
+    case 'alpha':
+        echo 'first alpha';
+        break;
+    case 'beta':
+        echo 'beta';
+        break;
+    case 'alpha':
+        echo 'duplicate alpha';
+        break;
+    case 1:
+        break;
+    case 1:
+        break;
+}
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = DuplicateSwitchCaseRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &[
+            "warning: duplicate switch case 'alpha'",
+            "warning: duplicate switch case 1",
+        ]);
+    }
+
+    #[test]
+    fn test_duplicate_switch_case_valid() {
+        let source = r#"<?php
+$value = 'alpha';
+
+switch ($value) {
+    case 'alpha':
+        echo 'alpha';
+        break;
+    case 'beta':
+        echo 'beta';
+        break;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = DuplicateSwitchCaseRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

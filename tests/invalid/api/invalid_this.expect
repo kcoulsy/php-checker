@@ -1,4 +1,0 @@
-warning: function global_this should have an explicit return type at 3:10
-error: $this is not allowed outside of class scope
-error: $this cannot be used in static context
-

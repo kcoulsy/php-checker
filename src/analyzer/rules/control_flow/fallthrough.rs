@@ -135,3 +135,71 @@ fn case_has_ignore_comment(_case_node: Node, parsed: &parser::ParsedSource) -> b
     let ignore_state = IgnoreState::from_source(parsed.source.as_str());
     ignore_state.should_ignore("control_flow/fallthrough")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_fallthrough() {
+        let source = r#"<?php
+
+function test_fallthrough_without_comment() {
+    $value = 1;
+    switch ($value) {
+        case 1:
+            echo "one";
+        case 2:
+            echo "one or two";
+            break;
+        case 3:
+            echo "three";
+            break;
+    }
+}
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = FallthroughRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &["warning: case falls through to next case without explicit comment"]);
+    }
+
+    #[test]
+    fn test_fallthrough_valid() {
+        let source = r#"<?php
+function test_fallthrough_with_break() {
+    $value = 1;
+    switch ($value) {
+        case 1:
+            echo "one";
+            break;
+        case 2:
+            echo "two";
+            break;
+    }
+}
+
+function test_fallthrough_with_return(): void {
+    $value = 1;
+    switch ($value) {
+        case 1:
+            echo "one";
+            return;
+        case 2:
+            echo "two";
+            return;
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = FallthroughRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

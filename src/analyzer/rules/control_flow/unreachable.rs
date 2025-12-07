@@ -88,3 +88,47 @@ impl<'a> UnreachableVisitor<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_unreachable() {
+        let source = r#"<?php
+
+function alwaysReturnEarly(): void
+{
+    return;
+    echo "this line is unreachable";
+}
+
+alwaysReturnEarly();
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UnreachableCodeRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &["warning: unreachable code after return at 6:5"]);
+    }
+
+    #[test]
+    fn test_unreachable_valid() {
+        let source = r#"<?php
+function normalFunction(): void
+{
+    echo "this line is reachable";
+    return;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = UnreachableCodeRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}
