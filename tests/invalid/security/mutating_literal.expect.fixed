@@ -1,7 +1,0 @@
-<?php
-
-$_php_checker_literal_1 = [1, 2, 3];
-array_pop($_php_checker_literal_1);
-$_php_checker_literal_2 = [3, 1, 2];
-sort($_php_checker_literal_2);
-

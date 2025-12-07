@@ -80,7 +80,6 @@ mod tests {
 
     #[test]
     fn test_missing_argument_file() {
-        // Test from tests/invalid/strict_typing/missing_argument.php
         let source = r#"<?php
 
 function takesTwo(int $a, int $b): void
@@ -94,13 +93,11 @@ takesTwo(1);
         let rule = MissingArgumentRule::new();
         let diagnostics = run_rule_with_context(&rule, source);
 
-        // Expected: error: missing required argument 2 for takesTwo
         assert_diagnostics_exact(&diagnostics, &["error: missing required argument 2 for takesTwo"]);
     }
 
     #[test]
     fn test_missing_argument_valid() {
-        // Test valid cases - all arguments provided should not trigger errors
         let source = r#"<?php
 function takesTwo(int $a, int $b): void
 {

@@ -182,3 +182,69 @@ fn enclosing_expression_statement(mut node: Node) -> Node {
 
     node
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_fix, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_mutating_literal_file() {
+        let source = r#"<?php
+
+array_pop([1, 2, 3]);
+sort([3, 1, 2]);
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = MutatingLiteralRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &[
+            "warning: array_pop modifies its argument in place; avoid passing literals",
+            "warning: sort modifies its argument in place; avoid passing literals",
+        ]);
+    }
+
+    #[test]
+    fn test_mutating_literal_fix() {
+        let input = r#"<?php
+
+array_pop([1, 2, 3]);
+sort([3, 1, 2]);
+
+"#;
+
+        let expected = r#"<?php
+
+$_php_checker_literal_1 = [1, 2, 3];
+array_pop($_php_checker_literal_1);
+$_php_checker_literal_2 = [3, 1, 2];
+sort($_php_checker_literal_2);
+
+"#;
+
+        let parsed = parse_php(input);
+        let rule = MutatingLiteralRule::new();
+        assert_fix(&rule, &parsed, input, expected);
+    }
+
+    #[test]
+    fn test_mutating_literal_valid() {
+        let source = r#"<?php
+$arr = [1, 2, 3];
+array_pop($arr);
+sort($arr);
+
+$data = [3, 1, 2];
+rsort($data);
+"#;
+
+        let parsed = parse_php(source);
+        let rule = MutatingLiteralRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}

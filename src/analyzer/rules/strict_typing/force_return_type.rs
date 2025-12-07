@@ -60,7 +60,6 @@ mod tests {
 
     #[test]
     fn test_force_return_type_file() {
-        // Test from tests/invalid/strict_typing/force_return_type.php
         let source = r#"<?php
 
 // Function without return type - should trigger warning
@@ -93,13 +92,11 @@ withStringReturnType();
         let rule = ForceReturnTypeRule::new();
         let diagnostics = run_rule(&rule, &parsed);
 
-        // Expected: warning: function noReturnType should have an explicit return type at 4:10
         assert_diagnostics_exact(&diagnostics, &["warning: function noReturnType should have an explicit return type at 4:10"]);
     }
 
     #[test]
     fn test_force_return_type_valid() {
-        // Test valid cases - functions with return types should not trigger warnings
         let source = r#"<?php
 // Function with void return type - should be OK
 function withVoidReturnType(): void {

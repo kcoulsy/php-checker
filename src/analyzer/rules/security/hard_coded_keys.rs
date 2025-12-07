@@ -236,3 +236,24 @@ fn extract_variable_name_from_declaration(
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule};
+
+    #[test]
+    fn test_hard_coded_keys_file() {
+        let source = r#"<?php
+
+// Hard-coded encryption key - should trigger error
+$key = "hardcodedkey123456789012345";
+"#;
+
+        let parsed = parse_php(source);
+        let rule = HardCodedKeysRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &["error: potential hard-coded encryption key detected, consider using environment variables or secure key management"]);
+    }
+}

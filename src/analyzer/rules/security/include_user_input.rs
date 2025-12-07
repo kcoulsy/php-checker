@@ -68,3 +68,28 @@ fn contains_superglobal<'a>(node: Node<'a>, parsed: &parser::ParsedSource) -> bo
     });
     found
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, parse_php, run_rule};
+
+    #[test]
+    fn test_include_user_input_file() {
+        let source = r#"<?php
+
+$page = $_GET['page'];
+include $page;
+<?php
+
+include $_GET['file'];
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = IncludeUserInputRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(&diagnostics, &["warning: including user input is dangerous"]);
+    }
+}

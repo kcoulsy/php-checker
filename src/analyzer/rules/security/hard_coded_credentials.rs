@@ -49,3 +49,29 @@ impl DiagnosticRule for HardCodedCredentialsRule {
         diagnostics
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, parse_php, run_rule};
+
+    #[test]
+    fn test_hard_credentials_file() {
+        let source = r#"<?php
+
+db_connect('super-secret-password');
+call_api('token', 'my-api-key');
+
+"#;
+
+        let parsed = parse_php(source);
+        let rule = HardCodedCredentialsRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        // Expected: 2 warnings for hard-coded credentials
+        assert_diagnostics_exact(&diagnostics, &[
+            "warning: hard-coded credential or token detected",
+            "warning: hard-coded credential or token detected",
+        ]);
+    }
+}

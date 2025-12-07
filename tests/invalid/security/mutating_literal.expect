@@ -1,3 +1,0 @@
-warning: array_pop modifies its argument in place; avoid passing literals
-warning: sort modifies its argument in place; avoid passing literals
-

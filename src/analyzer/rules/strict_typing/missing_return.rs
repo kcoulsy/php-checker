@@ -165,7 +165,6 @@ mod tests {
 
     #[test]
     fn test_missing_return_file() {
-        // Test from tests/invalid/strict_typing/missing_return.php
         let source = r#"<?php
 
 function maybeString(bool $flag)
@@ -185,13 +184,11 @@ maybeString(false);
         let rule = MissingReturnRule::new();
         let diagnostics = run_rule(&rule, &parsed);
 
-        // Expected: error: function maybeString is missing a return on some paths at 3:10
         assert_diagnostics_exact(&diagnostics, &["error: function maybeString is missing a return on some paths at 3:10"]);
     }
 
     #[test]
     fn test_missing_return_valid() {
-        // Test valid cases - all paths return should not trigger errors
         let source = r#"<?php
 // Function with return on all paths - should be OK
 function alwaysReturns(bool $flag): string {

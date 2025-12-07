@@ -199,10 +199,7 @@ function test() {
 
     #[test]
     fn test_consistent_return_file() {
-        // Test from tests/invalid/strict_typing/consistent_return.php
         let source = r#"<?php
-
-// php-checker-ignore: strict_typing/force_return_type,strict_typing/missing_return,control_flow/unreachable
 
 // Function with inconsistent return types - should trigger error
 function inconsistentReturns(bool $flag) {
@@ -264,13 +261,11 @@ booleanReturns(true);
         let rule = ConsistentReturnRule::new();
         let diagnostics = run_rule(&rule, &parsed);
 
-        // Expected: error: inconsistent return type: expected int, found string at 10:9
         assert_diagnostics_exact(&diagnostics, &["error: inconsistent return type: expected int, found string at 10:9"]);
     }
 
     #[test]
     fn test_consistent_return_types_valid() {
-        // Test valid cases - consistent return types should not trigger errors
         let source = r#"<?php
 // Function with consistent return types - should be OK
 function consistentReturns(bool $flag) {
