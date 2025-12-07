@@ -118,3 +118,82 @@ fn strict_types_insert_text(source: &str, offset: usize, newline: &str) -> Strin
     text.push_str(newline);
     text
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_fix_with_path, assert_no_diagnostics, parse_php, parse_php_with_path, run_rule};
+
+    #[test]
+    fn test_strict_missing_file() {
+        // Test from tests/invalid/strict_typing/strict_missing.php
+        let source = r#"<?php
+
+namespace StrictMissing;
+
+function example(): void
+{
+}
+
+"#;
+
+        // Use parse_php_with_path because the rule checks for "strict_missing" in the filename
+        let parsed = parse_php_with_path(source, "strict_missing.php");
+        let rule = StrictTypesRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        // Expected: warning: file missing `declare(strict_types=1)`
+        assert_diagnostics_exact(&diagnostics, &["warning: file missing `declare(strict_types=1)`"]);
+    }
+
+    #[test]
+    fn test_strict_types_valid() {
+        // Test valid cases - files with declare(strict_types=1) should not trigger warnings
+        let source = r#"<?php
+
+declare(strict_types=1);
+
+namespace StrictMissing;
+
+function example(): void
+{
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = StrictTypesRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_strict_missing_fix() {
+        // Test fix functionality from tests/invalid/strict_typing/strict_missing.expect.fixed
+        let input = r#"<?php
+
+namespace StrictMissing;
+
+function example(): void
+{
+}
+
+"#;
+
+        let expected = r#"<?php
+
+declare(strict_types=1);
+
+namespace StrictMissing;
+
+function example(): void
+{
+}
+
+"#;
+
+        let rule = StrictTypesRule::new();
+        // Use assert_fix_with_path because the rule checks for "strict_missing" in the filename
+        assert_fix_with_path(&rule, input, expected, "strict_missing.php");
+    }
+}

@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::analyzer::fix;
 use crate::analyzer::parser;
 use crate::analyzer::project::ProjectContext;
 use crate::analyzer::Diagnostic;
@@ -25,6 +26,26 @@ use crate::analyzer::Diagnostic;
 /// let parsed = parse_php(source);
 /// ```
 pub fn parse_php(source: &str) -> parser::ParsedSource {
+    parse_php_with_path(source, "test.php")
+}
+
+/// Parse PHP source code into a `ParsedSource` for testing with a custom file path.
+///
+/// This is useful for rules that check the filename (e.g., strict_types rule).
+///
+/// # Example
+/// ```rust
+/// use crate::analyzer::rules::test_utils::parse_php_with_path;
+///
+/// let source = r#"<?php
+/// function test() {
+///     return 42;
+/// }
+/// "#;
+///
+/// let parsed = parse_php_with_path(source, "strict_missing.php");
+/// ```
+pub fn parse_php_with_path(source: &str, path: &str) -> parser::ParsedSource {
     let mut ts_parser = tree_sitter::Parser::new();
     ts_parser
         .set_language(tree_sitter_php::language())
@@ -34,7 +55,7 @@ pub fn parse_php(source: &str) -> parser::ParsedSource {
         .expect("failed to parse PHP source");
 
     parser::ParsedSource {
-        path: PathBuf::from("test.php"),
+        path: PathBuf::from(path),
         source: Arc::new(source.to_string()),
         tree,
     }
@@ -339,4 +360,173 @@ pub fn assert_diagnostics_exact(diagnostics: &[Diagnostic], expected_lines: &[&s
             }
         }
     }
+}
+
+/// Run a rule's fix function on parsed PHP code and return the text edits.
+///
+/// # Example
+/// ```rust
+/// use crate::analyzer::rules::test_utils::{parse_php, run_fix};
+/// use crate::analyzer::rules::strict_typing::StrictTypesRule;
+///
+/// let source = r#"<?php
+/// function test(): void {}
+/// "#;
+///
+/// let parsed = parse_php(source);
+/// let rule = StrictTypesRule::new();
+/// let edits = run_fix(&rule, &parsed);
+/// ```
+pub fn run_fix<R>(rule: &R, parsed: &parser::ParsedSource) -> Vec<fix::TextEdit>
+where
+    R: crate::analyzer::rules::DiagnosticRule,
+{
+    let context = ProjectContext::new();
+    rule.fix(parsed, &context)
+}
+
+/// Run a rule's fix function on parsed PHP code with a context that includes the parsed file.
+///
+/// This is useful for rules that need to resolve symbols defined in the same file.
+///
+/// # Example
+/// ```rust
+/// use crate::analyzer::rules::test_utils::run_fix_with_context;
+/// use crate::analyzer::rules::strict_typing::StrictTypesRule;
+///
+/// let source = r#"<?php
+/// function test(): void {}
+/// "#;
+///
+/// let rule = StrictTypesRule::new();
+/// let edits = run_fix_with_context(&rule, source);
+/// ```
+pub fn run_fix_with_context<R>(rule: &R, source: &str) -> Vec<fix::TextEdit>
+where
+    R: crate::analyzer::rules::DiagnosticRule,
+{
+    // Parse twice: once for context (needs ownership), once for rule (needs reference)
+    let parsed_for_context = parse_php(source);
+    let parsed_for_rule = parse_php(source);
+    
+    let mut context = ProjectContext::new();
+    context.insert(parsed_for_context);
+    rule.fix(&parsed_for_rule, &context)
+}
+
+/// Assert that a rule's fix produces the expected output when applied to input source.
+///
+/// This function runs the rule's fix, applies the edits to the source, and compares
+/// the result with the expected output.
+///
+/// # Example
+/// ```rust
+/// use crate::analyzer::rules::test_utils::{assert_fix, parse_php_with_path};
+/// use crate::analyzer::rules::strict_typing::StrictTypesRule;
+///
+/// let input = r#"<?php
+/// function test(): void {}
+/// "#;
+///
+/// let expected = r#"<?php
+///
+/// declare(strict_types=1);
+///
+/// function test(): void {}
+/// "#;
+///
+/// let rule = StrictTypesRule::new();
+/// let parsed = parse_php_with_path(input, "strict_missing.php");
+/// assert_fix(&rule, &parsed, input, expected);
+/// ```
+pub fn assert_fix<R>(
+    rule: &R,
+    parsed: &parser::ParsedSource,
+    input: &str,
+    expected: &str,
+) where
+    R: crate::analyzer::rules::DiagnosticRule,
+{
+    let edits = run_fix(rule, parsed);
+    let actual = fix::apply_text_edits(input, &edits);
+
+    if actual != expected {
+        let mut error_msg = String::new();
+        error_msg.push_str(&format!(
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
+        error_msg.push_str("Fix output mismatch\n");
+        error_msg.push_str(&format!(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
+        
+        error_msg.push_str("\nExpected output:\n");
+        error_msg.push_str(&format!("```php\n{}\n```\n", expected));
+        
+        error_msg.push_str("\nActual output:\n");
+        error_msg.push_str(&format!("```php\n{}\n```\n", actual));
+        
+        // Show diff-like output
+        error_msg.push_str("\nDifferences:\n");
+        let expected_lines: Vec<&str> = expected.lines().collect();
+        let actual_lines: Vec<&str> = actual.lines().collect();
+        
+        let max_lines = expected_lines.len().max(actual_lines.len());
+        for i in 0..max_lines {
+            let expected_line = expected_lines.get(i).copied().unwrap_or("");
+            let actual_line = actual_lines.get(i).copied().unwrap_or("");
+            
+            if expected_line != actual_line {
+                error_msg.push_str(&format!("  Line {}:\n", i + 1));
+                if !expected_line.is_empty() {
+                    error_msg.push_str(&format!("    - {}\n", expected_line));
+                }
+                if !actual_line.is_empty() {
+                    error_msg.push_str(&format!("    + {}\n", actual_line));
+                }
+            }
+        }
+        
+        error_msg.push_str(&format!(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        ));
+        
+        panic!("{}", error_msg);
+    }
+}
+
+/// Assert that a rule's fix produces the expected output when applied to input source,
+/// using a custom file path for parsing.
+///
+/// This is useful for rules that check the filename (e.g., strict_types rule).
+///
+/// # Example
+/// ```rust
+/// use crate::analyzer::rules::test_utils::assert_fix_with_path;
+/// use crate::analyzer::rules::strict_typing::StrictTypesRule;
+///
+/// let input = r#"<?php
+/// function test(): void {}
+/// "#;
+///
+/// let expected = r#"<?php
+///
+/// declare(strict_types=1);
+///
+/// function test(): void {}
+/// "#;
+///
+/// let rule = StrictTypesRule::new();
+/// assert_fix_with_path(&rule, input, expected, "strict_missing.php");
+/// ```
+pub fn assert_fix_with_path<R>(
+    rule: &R,
+    input: &str,
+    expected: &str,
+    path: &str,
+) where
+    R: crate::analyzer::rules::DiagnosticRule,
+{
+    let parsed = parse_php_with_path(input, path);
+    assert_fix(rule, &parsed, input, expected);
 }

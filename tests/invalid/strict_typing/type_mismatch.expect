@@ -1,2 +1,0 @@
-error: type mismatch: argument 1 of takesInt expects int but got string literal at 7:10
-
