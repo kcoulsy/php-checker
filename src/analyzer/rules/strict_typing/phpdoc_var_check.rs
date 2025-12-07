@@ -17,7 +17,7 @@ impl PhpDocVarCheckRule {
 
     fn type_expression_to_string(expr: &TypeExpression) -> String {
         match expr {
-            TypeExpression::Simple(s) => s.clone(),
+            TypeExpression::Simple(s) => s.trim_start_matches('\\').to_string(),
             TypeExpression::Array(inner) => format!("{}[]", Self::type_expression_to_string(inner)),
             TypeExpression::Generic { base, params } => {
                 let params_str = params
@@ -273,7 +273,20 @@ impl PhpDocVarCheckRule {
             }
 
             // Check value type
-            if let Some(value_type) = value_type_opt {
+            // Special case: if the value is an array literal and expected_value is an array type,
+            // recursively validate the nested array
+            if value_node.kind() == "array_creation_expression"
+                && matches!(expected_value, TypeHint::Array(_) | TypeHint::GenericArray { .. })
+            {
+                // Recursively check nested array elements
+                Self::check_array_elements(
+                    value_node,
+                    expected_value,
+                    type_expr,
+                    parsed,
+                    diagnostics,
+                );
+            } else if let Some(value_type) = value_type_opt {
                 if value_type == TypeHint::Unknown {
                     diagnostics.push(diagnostic_for_node(
                         parsed,
@@ -410,25 +423,38 @@ impl DiagnosticRule for PhpDocVarCheckRule {
     ) -> Vec<crate::analyzer::Diagnostic> {
         let mut diagnostics = Vec::new();
 
-        // Check class properties with @var tags
+        // Check class properties and constants with @var tags
         walk_node(parsed.tree.root_node(), &mut |node| {
-            if node.kind() != "property_declaration" {
+            if !matches!(node.kind(), "property_declaration" | "const_declaration") {
                 return;
             }
 
             // Extract @var PHPDoc
             if let Some(phpdoc) = extract_phpdoc_for_node(node, parsed) {
                 if let Some(var_tag) = phpdoc.var_tag {
-                    // Find the property initializer
+                    // Find the property or const initializer
                     for i in 0..node.named_child_count() {
                         if let Some(child) = node.named_child(i) {
-                            if child.kind() == "property_element" {
-                                // Check if there's a property_initializer
-                                if let Some(initializer) =
+                            // Handle both property_element and const_element
+                            if matches!(child.kind(), "property_element" | "const_element") {
+                                // Check if there's a property_initializer or const_element value
+                                let initializer_opt = if child.kind() == "property_element" {
                                     child_by_kind(child, "property_initializer")
-                                {
-                                    // Get the value node (skip the = sign)
-                                    if let Some(value_node) = initializer.named_child(0) {
+                                } else {
+                                    // For const_element, the value is the second child after the name
+                                    child.named_child(1)
+                                };
+
+                                if let Some(initializer) = initializer_opt {
+                                    // Get the value node
+                                    let value_node_opt = if child.kind() == "property_element" {
+                                        initializer.named_child(0)
+                                    } else {
+                                        // For const_element, the initializer IS the value
+                                        Some(initializer)
+                                    };
+
+                                    if let Some(value_node) = value_node_opt {
                                         // Check if it's an array and validate elements
                                         if value_node.kind() == "array_creation_expression" {
                                             if let Some(expected_type) =
@@ -677,5 +703,592 @@ class TestObjectArrayMatches {
         let diagnostics = run_rule(&rule, &parsed);
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_correct_property_type() {
+        let source = r#"<?php
+class CorrectProperty {
+    /**
+     * @var string
+     */
+    private $name = "test";
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_wrong_property_type() {
+        let source = r#"<?php
+class WrongPropertyType {
+    /**
+     * @var string
+     */
+    private $name = 123;  // Error: assigning int to string property
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &["error: @var type 'string' conflicts with assigned value type 'int'"]
+        );
+    }
+
+    #[test]
+    fn test_wrong_inline_var() {
+        let source = r#"<?php
+function wrongInlineVar() {
+    /** @var string $value */
+    $value = 123;  // Error: assigning int to string variable
+    echo $value;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &["error: @var type 'string' conflicts with assigned value type 'int'"]
+        );
+    }
+
+    #[test]
+    fn test_wrong_array_element_type() {
+        let source = r#"<?php
+function wrongArrayElementType() {
+    /** @var User[] $users */
+    $users = [1, 2, 3];  // Error: array contains int, expected User[]
+    return $users;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_has_diagnostics(&diagnostics, "Array element");
+    }
+
+    #[test]
+    fn test_wrong_assoc_array_type() {
+        let source = r#"<?php
+function wrongAssocArrayType() {
+    /** @var array<string, int> $scores */
+    $scores = [1 => "wrong"];  // Error: int key and string value, expected string key and int value
+    return $scores;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_has_diagnostics(&diagnostics, "array");
+    }
+
+    #[test]
+    fn test_multiple_properties_wrong_type() {
+        let source = r#"<?php
+class MultipleProperties {
+    /**
+     * @var int
+     */
+    private $id;
+
+    /**
+     * @var string
+     */
+    private $name;
+
+    /**
+     * @var bool
+     */
+    private $active = "yes";  // Error: string assigned to bool property
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &["error: @var type 'bool' conflicts with assigned value type 'string'"]
+        );
+    }
+
+    #[test]
+    fn test_property_type_change() {
+        let source = r#"<?php
+class PropertyTypeChange {
+    /**
+     * @var string
+     */
+    private $value;
+
+    public function __construct() {
+        $this->value = "initial";
+    }
+
+    public function setValue() {
+        $this->value = 999;  // Error: assigning int to string property
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        // This rule only checks property initializers, not reassignments in methods
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_static_property_wrong_type() {
+        let source = r#"<?php
+class StaticProperty {
+    /**
+     * @var int
+     */
+    private static $counter = 0;
+
+    public static function increment() {
+        self::$counter = "wrong";  // Error: assigning string to int property
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        // This rule only checks property initializers
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_constant_wrong_type() {
+        let source = r#"<?php
+class ConstantType {
+    /**
+     * @var int
+     */
+    public const MAX_SIZE = "100";  // Error: string assigned to int constant
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &["error: @var type 'int' conflicts with assigned value type 'string'"]
+        );
+    }
+
+    #[test]
+    fn test_nested_array_var() {
+        let source = r#"<?php
+function nestedArrayVar() {
+    /** @var array<string, array<int, User>> $userGroups */
+    $userGroups = [
+        "admin" => [new User()],
+        "guest" => [1, 2, 3]  // Error: int[] instead of User[]
+    ];
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_has_diagnostics(&diagnostics, "array");
+    }
+
+    #[test]
+    fn test_array_destructuring() {
+        let source = r#"<?php
+function arrayDestructuring() {
+    /** @var array{id: int, name: string} $data */
+    $data = ["id" => 1, "name" => "test"];
+
+    /** @var array{id: int, name: string} $wrong */
+    $wrong = ["id" => "one", "name" => 123];  // Error: id should be int, name should be string
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_has_diagnostics(&diagnostics, "array");
+    }
+
+    #[test]
+    fn test_global_variable_wrong_type() {
+        let source = r#"<?php
+/** @var string $globalString */
+$globalString = 123;  // Error: int assigned to string variable
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &["error: @var type 'string' conflicts with assigned value type 'int'"]
+        );
+    }
+
+    // Tests from phpdoc_var_scenarios
+
+    #[test]
+    fn test_scenario_01_correct_property() {
+        let source = r#"<?php
+// Scenario: Property with correct @var type
+// Expected: No errors
+
+class CorrectProperty {
+    /**
+     * @var string
+     */
+    private $name = "test";
+
+    /**
+     * @var int
+     */
+    private $age = 25;
+
+    /**
+     * @var bool
+     */
+    private $active = true;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_scenario_02_wrong_property_type() {
+        let source = r#"<?php
+// Scenario: Property assigned wrong type vs @var
+// Expected: Error on line 8 (string property with int value)
+
+class WrongPropertyType {
+    /**
+     * @var string
+     */
+    private $name = 123;  // Error: int assigned to string property
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &["error: @var type 'string' conflicts with assigned value type 'int'"]
+        );
+    }
+
+    #[test]
+    fn test_scenario_03_inline_var_cast() {
+        let source = r#"<?php
+// Scenario: Inline @var type casting in assignment
+// Expected: No errors - valid type narrowing
+
+function createDate(): object {
+    return new \DateTime();
+}
+
+function inlineVarCast() {
+    /** @var \DateTime $date */
+    $date = createDate();
+    $date->format('Y-m-d');  // OK: $date is known to be DateTime
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_scenario_04_wrong_inline_var() {
+        let source = r#"<?php
+// Scenario: Inline @var claims wrong type
+// Expected: Error on line 5 (assigning int to string variable)
+
+function wrongInlineVar() {
+    /** @var string $value */
+    $value = 123;  // Error: assigning int to string variable
+    echo $value;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &["error: @var type 'string' conflicts with assigned value type 'int'"]
+        );
+    }
+
+    #[test]
+    fn test_scenario_05_reassignment_violation() {
+        let source = r#"<?php
+// Scenario: Variable reassigned to incompatible type after @var
+// Expected: Error on reassignment (implementation detects this)
+
+function reassignmentAfterVar() {
+    /** @var string $text */
+    $text = "hello";
+    $text = 456;  // Error: int assigned to string variable
+    echo $text;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        // The rule detects the reassignment because it's within the scope
+        // where the @var declaration is still active
+        assert_diagnostics_exact(
+            &diagnostics,
+            &["error: @var type 'string' conflicts with assigned value type 'int'"]
+        );
+    }
+
+    #[test]
+    fn test_scenario_06_generic_array() {
+        let source = r#"<?php
+// Scenario: @var with generic array type
+// Expected: No errors - correct User[] array
+
+class User {}
+
+class UserCollection {
+    /**
+     * @var User[]
+     */
+    private $users = [];
+
+    public function addUser(User $user): void {
+        $this->users[] = $user;
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_scenario_07_var_union_matches() {
+        let source = r#"<?php
+// Scenario: @var union type with values that match one of the union members
+// Expected: No errors
+
+class User {}
+class Admin {}
+
+class TestVarUnionMatches {
+    /**
+     * @var int|string
+     */
+    private $intOrString = 123;
+
+    /**
+     * @var int|string
+     */
+    private $intOrString2 = "hello";
+
+    /**
+     * @var User|Admin
+     */
+    private $userOrAdmin;
+
+    /**
+     * @var int|string|bool
+     */
+    private $multiType = true;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_scenario_08_var_union_conflict() {
+        let source = r#"<?php
+// Scenario: @var union type conflicts with assigned value type
+// Expected: Errors on lines 9, 15, 21
+
+class User {}
+class Admin {}
+
+class TestVarUnionConflict {
+    /**
+     * @var int|string
+     */
+    private $wrongType = true;
+
+    /**
+     * @var int|string
+     */
+    private $wrongType2 = 1.5;
+
+    /**
+     * @var User|Admin
+     */
+    private $wrongObject = 123;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &[
+                "error: @var type 'int|string' conflicts with assigned value type 'bool'",
+                "error: @var type 'int|string' conflicts with assigned value type 'float'",
+                "error: @var type 'User|Admin' conflicts with assigned value type 'int'",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_scenario_09_var_array_simple() {
+        let source = r#"<?php
+// Scenario: @var with simple array types (int[], string[])
+// Expected: No errors for empty arrays
+
+class TestSimpleArrays {
+    /**
+     * @var int[]
+     */
+    private $integers = [];
+
+    /**
+     * @var string[]
+     */
+    private $strings = [];
+
+    /**
+     * @var bool[]
+     */
+    private $flags = [];
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_scenario_10_var_array_elements_match() {
+        let source = r#"<?php
+// Scenario: @var array type with matching element types
+// Expected: No errors - all elements match the declared type
+
+class TestArrayElementsMatch {
+    /**
+     * @var int[]
+     */
+    private $integers = [1, 2, 3];
+
+    /**
+     * @var string[]
+     */
+    private $strings = ["hello", "world"];
+
+    /**
+     * @var bool[]
+     */
+    private $flags = [true, false, true];
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_scenario_11_var_array_elements_conflict() {
+        let source = r#"<?php
+// Scenario: @var array type with mismatched element types
+// Expected: Errors on lines 11, 17, 23
+
+class TestArrayElementsConflict {
+    /**
+     * @var int[]
+     */
+    private $integers = [1, "string", 3]; // Error: string in int array
+
+    /**
+     * @var string[]
+     */
+    private $strings = ["hello", 123]; // Error: int in string array
+
+    /**
+     * @var bool[]
+     */
+    private $flags = [true, "false"]; // Error: string in bool array
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocVarCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &[
+                "error: Array element type 'string' conflicts with expected element type 'int' for int[]",
+                "error: Array element type 'int' conflicts with expected element type 'string' for string[]",
+                "error: Array element type 'string' conflicts with expected element type 'bool' for bool[]",
+            ]
+        );
     }
 }

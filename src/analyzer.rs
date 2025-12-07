@@ -334,6 +334,7 @@ impl Analyzer {
             Arc::new(rules::PhpDocParamCheckRule::new()),
             Arc::new(rules::PhpDocReturnCheckRule::new()),
             Arc::new(rules::PhpDocReturnValueCheckRule::new()),
+            Arc::new(rules::PhpDocThrowsCheckRule::new()),
         ];
 
         let config = config.unwrap_or_default();
@@ -408,7 +409,7 @@ impl Analyzer {
                 if let Some(ref pb) = pb_for_diag {
                     pb.inc(1);
                 }
-                let mut diags =
+                let diags =
                     collect_diagnostics_with_rules(&rules, parsed, context_for_diag.as_ref());
                 if let Some(ref pb) = pb_for_diag {
                     for diag in &diags {

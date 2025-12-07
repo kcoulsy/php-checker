@@ -1,1 +1,0 @@
-strict_typing/phpdoc_return_check | 13 | @return type 'User' conflicts with native return type hint 'Admin'

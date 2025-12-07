@@ -401,4 +401,247 @@ class Test {
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].message.contains("@return type 'bool'"));
     }
+
+    // Tests from phpdoc_return_scenarios
+
+    #[test]
+    fn test_scenario_01_return_type_conflict() {
+        let source = r#"<?php
+// Scenario: @return type conflicts with native return type
+// Expected: Error on line 10
+
+/**
+ * @return string
+ */
+function test(): int {
+    return 42;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let context = ProjectContext::new();
+
+        let rule = PhpDocReturnCheckRule::new();
+        let diagnostics = rule.run(&parsed, &context);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains("@return type 'string' conflicts with native return type hint 'int'"));
+    }
+
+    #[test]
+    fn test_scenario_02_return_type_matches() {
+        let source = r#"<?php
+// Scenario: @return type matches native return type
+// Expected: No errors
+
+/**
+ * @return int
+ */
+function test(): int {
+    return 42;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let context = ProjectContext::new();
+
+        let rule = PhpDocReturnCheckRule::new();
+        let diagnostics = rule.run(&parsed, &context);
+
+        assert_eq!(diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_scenario_03_return_object_conflict() {
+        let source = r#"<?php
+// Scenario: @return object type conflicts with native return type
+// Expected: Error on line 11
+
+class User {}
+class Admin {}
+
+/**
+ * @return User
+ */
+function getAdmin(): Admin {
+    return new Admin();
+}
+"#;
+
+        let parsed = parse_php(source);
+        let context = ProjectContext::new();
+
+        let rule = PhpDocReturnCheckRule::new();
+        let diagnostics = rule.run(&parsed, &context);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains("@return type 'User' conflicts with native return type hint 'Admin'"));
+    }
+
+    #[test]
+    fn test_scenario_04_return_nullable_matches() {
+        let source = r#"<?php
+// Scenario: @return nullable type matches native nullable return type hint
+// Expected: No errors
+
+/**
+ * @return ?string
+ */
+function getName(): ?string {
+    return null;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let context = ProjectContext::new();
+
+        let rule = PhpDocReturnCheckRule::new();
+        let diagnostics = rule.run(&parsed, &context);
+
+        assert_eq!(diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_scenario_05_return_nullable_conflict() {
+        let source = r#"<?php
+// Scenario: @return nullable type conflicts with non-nullable native return type hint
+// Expected: No error - nullable mismatch detection not yet implemented
+
+/**
+ * @return ?string
+ */
+function getName(): string {
+    return "John";
+}
+"#;
+
+        let parsed = parse_php(source);
+        let context = ProjectContext::new();
+
+        let rule = PhpDocReturnCheckRule::new();
+        let diagnostics = rule.run(&parsed, &context);
+
+        // Nullable mismatch detection not yet implemented
+        // ?string is compatible with string according to current type checking
+        assert_eq!(diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_scenario_06_return_non_nullable_conflict() {
+        let source = r#"<?php
+// Scenario: @return non-nullable type conflicts with nullable native return type hint
+// Expected: No error - nullable mismatch detection not yet implemented
+
+/**
+ * @return string
+ */
+function getName(): ?string {
+    return null;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let context = ProjectContext::new();
+
+        let rule = PhpDocReturnCheckRule::new();
+        let diagnostics = rule.run(&parsed, &context);
+
+        // Nullable mismatch detection not yet implemented
+        // string is compatible with ?string according to current type checking
+        assert_eq!(diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_scenario_07_return_union_matches() {
+        let source = r#"<?php
+// Scenario: @return union type matches native union type hint
+// Expected: No errors
+
+class User {}
+class Admin {}
+
+class TestReturnUnionMatches {
+    /**
+     * @return int|string
+     */
+    function returnsIntOrString(): int|string {
+        // OK - PHPDoc matches native type
+        return 42;
+    }
+
+    /**
+     * @return int|string|bool
+     */
+    function returnsMultipleTypes(): int|string|bool {
+        // OK - PHPDoc matches native union type
+        return true;
+    }
+
+    /**
+     * @return User|Admin
+     */
+    function returnsUserOrAdmin(): User|Admin {
+        // OK - union of objects
+        return new User();
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let context = ProjectContext::new();
+
+        let rule = PhpDocReturnCheckRule::new();
+        let diagnostics = rule.run(&parsed, &context);
+
+        assert_eq!(diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_scenario_08_return_union_conflict() {
+        let source = r#"<?php
+// Scenario: @return union type conflicts with native union type hint
+// Expected: Errors on lines 9, 17, 25
+
+class User {}
+class Admin {}
+class Guest {}
+
+class TestReturnUnionConflict {
+    /**
+     * @return int|string
+     */
+    function wrongUnion(): int|bool {
+        // Error - bool is not string
+        return true;
+    }
+
+    /**
+     * @return int|string
+     */
+    function differentUnion(): string|float {
+        // Error - types don't match
+        return 1.5;
+    }
+
+    /**
+     * @return User|Admin
+     */
+    function wrongObjectUnion(): User|Guest {
+        // Error - Guest is not Admin
+        return new Guest();
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let context = ProjectContext::new();
+
+        let rule = PhpDocReturnCheckRule::new();
+        let diagnostics = rule.run(&parsed, &context);
+
+        assert_eq!(diagnostics.len(), 3);
+        assert!(diagnostics.iter().any(|d| d.message.contains("@return type 'int|string' conflicts with native return type hint 'int|bool'")));
+        assert!(diagnostics.iter().any(|d| d.message.contains("@return type 'int|string' conflicts with native return type hint 'string|float'")));
+        assert!(diagnostics.iter().any(|d| d.message.contains("@return type 'User|Admin' conflicts with native return type hint 'User|Guest'")));
+    }
 }

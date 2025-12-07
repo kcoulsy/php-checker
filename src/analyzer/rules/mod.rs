@@ -26,8 +26,8 @@ pub use security::{
 };
 pub use strict_typing::{
     ConsistentReturnRule, ForceReturnTypeRule, MissingArgumentRule, MissingReturnRule,
-    PhpDocParamCheckRule, PhpDocReturnCheckRule, PhpDocReturnValueCheckRule, PhpDocVarCheckRule,
-    StrictTypesRule, TypeMismatchRule,
+    PhpDocParamCheckRule, PhpDocReturnCheckRule, PhpDocReturnValueCheckRule, PhpDocThrowsCheckRule,
+    PhpDocVarCheckRule, StrictTypesRule, TypeMismatchRule,
 };
 
 pub trait DiagnosticRule: Send + Sync {

@@ -80,7 +80,7 @@ impl PhpDocReturnValueCheckRule {
 
     fn type_expression_to_string(expr: &TypeExpression) -> String {
         match expr {
-            TypeExpression::Simple(s) => s.clone(),
+            TypeExpression::Simple(s) => s.trim_start_matches('\\').to_string(),
             TypeExpression::Array(inner) => format!("{}[]", Self::type_expression_to_string(inner)),
             TypeExpression::Generic { base, params } => {
                 let params_str = params
@@ -695,5 +695,255 @@ class TestReturnValueMatches {
         let diagnostics = run_rule(&rule, &parsed);
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_correct_return_matching_native_type() {
+        let source = r#"<?php
+/**
+ * @return int
+ */
+function correctReturn(): int {
+    return 42;
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_wrong_return_value() {
+        let source = r#"<?php
+/**
+ * @return int
+ */
+function wrongReturnValue(): int {
+    return "not an int";  // Error: returning string when int expected
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &["error: Return value type 'string' conflicts with @return type 'int'"]
+        );
+    }
+
+    #[test]
+    fn test_inconsistent_returns() {
+        let source = r#"<?php
+/**
+ * @return int
+ */
+function inconsistentReturns(bool $condition) {
+    if ($condition) {
+        return 42;
+    }
+    return "string";  // Error: returning string when int expected
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &["error: Return value type 'string' conflicts with @return type 'int'"]
+        );
+    }
+
+    #[test]
+    fn test_return_void_with_no_return() {
+        let source = r#"<?php
+/**
+ * @return void
+ */
+function returnsVoid(): void {
+    echo "side effect";
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_wrong_array_element_type() {
+        let source = r#"<?php
+/**
+ * @return string[]
+ */
+function wrongArrayElements(): array {
+    return [1, 2, 3];  // Error: returning int[] when string[] expected
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &[
+                "error: Array element type 'int' conflicts with expected element type 'string' for @return type 'string[]'",
+                "error: Array element type 'int' conflicts with expected element type 'string' for @return type 'string[]'",
+                "error: Array element type 'int' conflicts with expected element type 'string' for @return type 'string[]'",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_wrong_assoc_array_return() {
+        let source = r#"<?php
+/**
+ * @return array<string, int>
+ */
+function wrongAssocArrayReturn(): array {
+    return [1 => "wrong"];  // Error: int key, string value instead of string key, int value
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        // Should detect both key and value type mismatches
+        assert_has_diagnostics(&diagnostics, "array");
+    }
+
+    #[test]
+    fn test_wrong_object_return() {
+        let source = r#"<?php
+/**
+ * @return \DateTime
+ */
+function wrongObjectReturn(): \DateTime {
+    return new \DateTimeImmutable();  // Error: DateTimeImmutable is not DateTime (even if related)
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &["error: Return value type 'DateTimeImmutable' conflicts with @return type 'DateTime'"]
+        );
+    }
+
+    #[test]
+    fn test_mixed_return_becoming_specific() {
+        let source = r#"<?php   
+/**
+ * @return string  // Claims string
+ */
+function claimsStringReturn() {  // No native hint (accepts mixed)
+    return 123;  // Error: returning int when string expected
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &["error: Return value type 'int' conflicts with @return type 'string'"]
+        );
+    }
+
+    // Tests from phpdoc_return_scenarios
+
+    #[test]
+    fn test_scenario_09_return_value_matches() {
+        let source = r#"<?php
+// Scenario: @return type matches actual return values
+// Expected: No errors
+
+class TestReturnValueMatches {
+    /**
+     * @return int
+     */
+    function getNumber(): int {
+        return 42;
+    }
+
+    /**
+     * @return string
+     */
+    function getName(): string {
+        return "Alice";
+    }
+
+    /**
+     * @return bool
+     */
+    function isValid(): bool {
+        return true;
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_scenario_10_return_value_conflict() {
+        let source = r#"<?php
+// Scenario: @return type conflicts with actual return values
+// Expected: Errors on lines 11, 19, 27
+
+class TestReturnValueConflict {
+    /**
+     * @return int
+     */
+    function getNumber(): int {
+        return "not a number"; // Error: string instead of int
+    }
+
+    /**
+     * @return string
+     */
+    function getName(): string {
+        return 123; // Error: int instead of string
+    }
+
+    /**
+     * @return bool
+     */
+    function isValid(): bool {
+        return "yes"; // Error: string instead of bool
+    }
+}
+"#;
+
+        let parsed = parse_php(source);
+        let rule = PhpDocReturnValueCheckRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_diagnostics_exact(
+            &diagnostics,
+            &[
+                "error: Return value type 'string' conflicts with @return type 'int'",
+                "error: Return value type 'int' conflicts with @return type 'string'",
+                "error: Return value type 'string' conflicts with @return type 'bool'",
+            ]
+        );
     }
 }

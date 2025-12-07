@@ -359,13 +359,17 @@ pub fn infer_type(node: Node, parsed: &parser::ParsedSource) -> Option<TypeHint>
         // Get the class name from the object creation
         if let Some(name_node) = child_by_kind(node, "name") {
             if let Some(class_name) = node_text(name_node, parsed) {
-                return Some(TypeHint::Object(class_name));
+                // Strip leading backslash from fully qualified names
+                let class_name = class_name.trim_start_matches('\\');
+                return Some(TypeHint::Object(class_name.to_string()));
             }
         }
         // Also check for qualified_name (namespaced classes)
         if let Some(name_node) = child_by_kind(node, "qualified_name") {
             if let Some(class_name) = node_text(name_node, parsed) {
-                return Some(TypeHint::Object(class_name));
+                // Strip leading backslash from fully qualified names
+                let class_name = class_name.trim_start_matches('\\');
+                return Some(TypeHint::Object(class_name.to_string()));
             }
         }
         return Some(TypeHint::Unknown);
@@ -394,7 +398,7 @@ fn infer_variable_type(
     _context_node: Node,
     parsed: &parser::ParsedSource,
 ) -> Option<TypeHint> {
-    use crate::analyzer::phpdoc::{extract_phpdoc_for_node, TypeExpression};
+    use crate::analyzer::phpdoc::extract_phpdoc_for_node;
 
     let root = parsed.tree.root_node();
     let mut found_type = None;
@@ -680,7 +684,7 @@ pub fn is_type_compatible(actual: &TypeHint, expected: &TypeHint) -> bool {
             }
 
             // If actual is nullable, unwrap and check inner type
-            if let TypeHint::Nullable(actual_inner) = actual {
+            if let TypeHint::Nullable(_actual_inner) = actual {
                 // Nullable type is only compatible with non-nullable if they match exactly
                 // which we already checked above, so this is false
                 return false;
