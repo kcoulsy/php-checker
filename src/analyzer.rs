@@ -335,6 +335,8 @@ impl Analyzer {
             Arc::new(rules::PhpDocReturnCheckRule::new()),
             Arc::new(rules::PhpDocReturnValueCheckRule::new()),
             Arc::new(rules::PhpDocThrowsCheckRule::new()),
+            Arc::new(rules::PhpDocPropertyCheckRule::new()),
+            Arc::new(rules::PhpDocMethodCheckRule::new()),
         ];
 
         let config = config.unwrap_or_default();

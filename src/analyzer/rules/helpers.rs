@@ -17,7 +17,8 @@ pub enum TypeHint {
         key: Box<TypeHint>,
         value: Box<TypeHint>,
     },
-    ShapedArray(Vec<(String, TypeHint)>), // Shaped array with named fields (array{name: string, age: int})
+    ShapedArray(Vec<(String, TypeHint, bool)>), // Shaped array with named fields (array{name: string, age: int, email?: string})
+    // Tuple format: (field_name, type_hint, is_optional)
     Unknown,
 }
 
@@ -600,6 +601,65 @@ pub fn extract_array_key_value_pairs<'a>(
     pairs
 }
 
+/// Extract array elements as a map of string keys to (value_node, inferred_type)
+/// This is used for shaped array validation where we need to match specific keys
+pub fn extract_array_as_map<'a>(
+    array_node: Node<'a>,
+    parsed: &parser::ParsedSource,
+) -> HashMap<String, (Node<'a>, Option<TypeHint>)> {
+    let mut map = HashMap::new();
+    let mut cursor = array_node.walk();
+
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.kind() == "array_element_initializer" {
+                // Check if it's a key-value pair
+                if child.named_child_count() == 2 {
+                    // Associative array ["key" => value]
+                    let key_node = child.named_child(0);
+                    let value_node = child.named_child(1);
+
+                    if let (Some(k_node), Some(v_node)) = (key_node, value_node) {
+                        // Extract the string key if it's a string literal
+                        if let Some(key_str) = extract_string_key(k_node, parsed) {
+                            let value_type = infer_type(v_node, parsed);
+                            map.insert(key_str, (v_node, value_type));
+                        }
+                    }
+                }
+            }
+
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+
+    map
+}
+
+/// Extract a string key from a node (handles string literals and identifiers)
+fn extract_string_key(node: Node, parsed: &parser::ParsedSource) -> Option<String> {
+    match node.kind() {
+        "string" | "encapsed_string" => {
+            // String literal - extract without quotes
+            let text = node_text(node, parsed)?;
+            // Remove surrounding quotes (both single and double)
+            if text.len() >= 2 {
+                Some(text[1..text.len() - 1].to_string())
+            } else {
+                None
+            }
+        }
+        "name" | "qualified_name" => {
+            // Bare string key (PHP allows this)
+            node_text(node, parsed)
+        }
+        _ => None,
+    }
+}
+
 /// Check if actual_type is compatible with (a subset of) expected_type
 /// Examples:
 /// - int is compatible with int|string (subset)
@@ -673,6 +733,35 @@ pub fn is_type_compatible(actual: &TypeHint, expected: &TypeHint) -> bool {
                     && is_type_compatible(actual_value, expected_value);
             }
             false
+        }
+
+        // If expected is a shaped array, actual must be a shaped array with compatible fields
+        TypeHint::ShapedArray(expected_fields) => {
+            if let TypeHint::ShapedArray(actual_fields) = actual {
+                // For now, require exact match of keys and compatible types
+                // Future: could support structural subtyping (extra keys allowed)
+                if expected_fields.len() != actual_fields.len() {
+                    return false;
+                }
+
+                // Check that all expected fields exist in actual with compatible types
+                // Note: optional flag is ignored for type compatibility - we only check if types match
+                for (expected_key, expected_type, _is_optional) in expected_fields {
+                    let found = actual_fields.iter().find(|(key, _, _)| key == expected_key);
+                    match found {
+                        Some((_, actual_type, _)) => {
+                            if !is_type_compatible(actual_type, expected_type) {
+                                return false;
+                            }
+                        }
+                        None => return false,
+                    }
+                }
+
+                true
+            } else {
+                false
+            }
         }
 
         // If actual is a union but expected is not, check if all actual types match expected

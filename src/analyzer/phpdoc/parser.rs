@@ -90,6 +90,26 @@ impl PhpDocParser {
                     doc.throws.push(throws_tag);
                 }
             }
+            "property" | "phpstan-property" => {
+                if let Some(property_tag) = Self::parse_property_tag(tag_value, false, false) {
+                    doc.properties.push(property_tag);
+                }
+            }
+            "property-read" | "phpstan-property-read" => {
+                if let Some(property_tag) = Self::parse_property_tag(tag_value, true, false) {
+                    doc.properties.push(property_tag);
+                }
+            }
+            "property-write" | "phpstan-property-write" => {
+                if let Some(property_tag) = Self::parse_property_tag(tag_value, false, true) {
+                    doc.properties.push(property_tag);
+                }
+            }
+            "method" | "phpstan-method" => {
+                if let Some(method_tag) = Self::parse_method_tag(tag_value) {
+                    doc.methods.push(method_tag);
+                }
+            }
             _ => {
                 // Ignore other tags for now
             }
@@ -202,6 +222,137 @@ impl PhpDocParser {
         })
     }
 
+    /// Parse @property tag
+    /// Format: @property Type $name [description]
+    fn parse_property_tag(value: &str, readonly: bool, writeonly: bool) -> Option<PropertyTag> {
+        let value = value.trim();
+
+        // Find where the variable name starts (marked by $)
+        let dollar_pos = value.find('$')?;
+
+        // Type is everything before the $, trimmed
+        let type_str = value[..dollar_pos].trim();
+        let var_part = &value[dollar_pos..];
+
+        let type_expr = Self::parse_type_expression(type_str)?;
+
+        // Extract variable name (first token after $)
+        let parts: Vec<&str> = var_part.splitn(2, char::is_whitespace).collect();
+        let var_name = parts[0].trim_start_matches('$');
+
+        Some(PropertyTag {
+            name: var_name.to_string(),
+            type_expr,
+            readonly,
+            writeonly,
+        })
+    }
+
+    /// Parse @method tag
+    /// Format: @method [static] ReturnType methodName(Type $param1, Type $param2) [description]
+    fn parse_method_tag(value: &str) -> Option<MethodTag> {
+        let value = value.trim();
+
+        // Check if method is static
+        let (is_static, rest) = if let Some(rest) = value.strip_prefix("static").and_then(|s| {
+            let trimmed = s.trim_start();
+            if trimmed.is_empty() || !trimmed.chars().next()?.is_alphabetic() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        }) {
+            (true, rest)
+        } else {
+            (false, value)
+        };
+
+        // Find the opening parenthesis for parameters
+        let paren_start = rest.find('(')?;
+
+        // Everything before ( is: ReturnType methodName
+        let before_params = rest[..paren_start].trim();
+
+        // Split into return type and method name
+        // The last word is the method name, everything else is the return type
+        let parts: Vec<&str> = before_params.split_whitespace().collect();
+        if parts.is_empty() {
+            return None;
+        }
+
+        let (return_type, method_name) = if parts.len() == 1 {
+            // No return type specified (e.g., @method foo())
+            (None, parts[0])
+        } else {
+            // Last part is method name, rest is return type
+            let name = parts[parts.len() - 1];
+            let type_str = parts[..parts.len() - 1].join(" ");
+            let type_expr = Self::parse_type_expression(&type_str);
+            (type_expr, name)
+        };
+
+        // Find the closing parenthesis
+        let paren_end = rest.rfind(')')?;
+
+        // Extract parameters between parentheses
+        let params_str = &rest[paren_start + 1..paren_end].trim();
+
+        // Parse parameters
+        let params = if params_str.is_empty() {
+            Vec::new()
+        } else {
+            Self::parse_method_params(params_str)?
+        };
+
+        Some(MethodTag {
+            name: method_name.to_string(),
+            params,
+            return_type,
+            is_static,
+        })
+    }
+
+    /// Parse method parameters from a parameter list string
+    /// Format: "Type $param1, Type $param2, Type $param3 = default"
+    fn parse_method_params(params_str: &str) -> Option<Vec<ParamTag>> {
+        let param_strs = Self::split_params(params_str);
+        let mut params = Vec::new();
+
+        for param_str in param_strs {
+            let param_str = param_str.trim();
+
+            // Handle default values by splitting on '='
+            let param_str = if let Some(eq_pos) = param_str.find('=') {
+                param_str[..eq_pos].trim()
+            } else {
+                param_str
+            };
+
+            // Find the variable name (starts with $)
+            let dollar_pos = param_str.find('$')?;
+
+            // Type is everything before the $
+            let type_str = param_str[..dollar_pos].trim();
+            let var_part = &param_str[dollar_pos..];
+
+            let type_expr = Self::parse_type_expression(type_str)?;
+
+            // Extract variable name
+            let parts: Vec<&str> = var_part.split_whitespace().collect();
+            if parts.is_empty() {
+                continue;
+            }
+            let var_name = parts[0].trim_start_matches('$');
+
+            params.push(ParamTag {
+                name: var_name.to_string(),
+                type_expr,
+            });
+        }
+
+        Some(params)
+    }
+
     /// Parse a type expression
     /// Supports: int, string, int[], array<string, int>, int|string, ?int, etc.
     pub fn parse_type_expression(type_str: &str) -> Option<TypeExpression> {
@@ -277,23 +428,31 @@ impl PhpDocParser {
         Some((base, params))
     }
 
-    /// Parse shaped array fields: "name: string, age: int" -> [("name", Simple("string")), ("age", Simple("int"))]
-    fn parse_shaped_array_fields(fields_str: &str) -> Option<Vec<(String, TypeExpression)>> {
+    /// Parse shaped array fields: "name: string, age: int, email?: string" 
+    /// -> [("name", Simple("string"), false), ("age", Simple("int"), false), ("email", Simple("string"), true)]
+    fn parse_shaped_array_fields(fields_str: &str) -> Option<Vec<(String, TypeExpression, bool)>> {
         let field_strs = Self::split_params(fields_str);
         let mut fields = Vec::new();
 
         for field_str in field_strs {
-            // Split on colon: "name: string" -> ["name", "string"]
+            // Split on colon: "name: string" or "email?: string" -> ["name" or "email?", "string"]
             let parts: Vec<&str> = field_str.splitn(2, ':').collect();
             if parts.len() != 2 {
                 return None;
             }
 
-            let field_name = parts[0].trim().to_string();
+            let field_name_with_optional = parts[0].trim();
+            // Check if field name ends with '?' to indicate optional
+            let (field_name, is_optional) = if field_name_with_optional.ends_with('?') {
+                (field_name_with_optional[..field_name_with_optional.len() - 1].trim().to_string(), true)
+            } else {
+                (field_name_with_optional.to_string(), false)
+            };
+
             let type_str = parts[1].trim();
             let type_expr = Self::parse_type_expression(type_str)?;
 
-            fields.push((field_name, type_expr));
+            fields.push((field_name, type_expr, is_optional));
         }
 
         Some(fields)

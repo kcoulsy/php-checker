@@ -164,8 +164,9 @@ fn type_hint_to_string(hint: &TypeHint) -> String {
         TypeHint::ShapedArray(fields) => {
             let fields_str = fields
                 .iter()
-                .map(|(name, hint)| {
-                    format!("{}: {}", name, type_hint_to_string(hint))
+                .map(|(name, hint, is_optional)| {
+                    let optional_marker = if *is_optional { "?" } else { "" };
+                    format!("{}{}: {}", optional_marker, name, type_hint_to_string(hint))
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
