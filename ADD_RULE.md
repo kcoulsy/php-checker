@@ -135,30 +135,226 @@ let mut rules: Vec<Box<dyn rules::DiagnosticRule>> = vec![
 
 ## Step 4: Create Tests
 
-### Test PHP File
+Tests are now written directly in the same file as your rule implementation, using Rust's built-in test framework. This keeps tests close to the code they're testing and makes it easier to maintain.
 
-Create a PHP test file in `tests/invalid/category/my_new_rule.php`:
+### Test Structure
 
-```php
-<?php
+Add a `#[cfg(test)]` module at the end of your rule file:
 
-// Code that should trigger your rule
-bad_example_function();
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::*;
 
-// Code that should NOT trigger your rule
-good_example_function();
+    #[test]
+    fn test_my_rule_triggered() {
+        // Test code here
+    }
+
+    #[test]
+    fn test_my_rule_not_triggered() {
+        // Test code here
+    }
+}
 ```
 
-### Expected Output File
+### Test Helper Functions
 
-Create a corresponding `.expect` file with the expected diagnostic output:
+The `test_utils` module provides several helper functions to make testing easier:
 
+#### Parsing PHP Code
+
+- **`parse_php(source: &str)`** - Parse PHP source code into a `ParsedSource` for testing
+  ```rust
+  let source = r#"<?php
+  function test() {
+      return 42;
+  }
+  "#;
+  let parsed = parse_php(source);
+  ```
+
+- **`parse_php_with_path(source: &str, path: &str)`** - Parse with a custom file path
+  - Useful for rules that check the filename (e.g., `strict_types` rule)
+  ```rust
+  let parsed = parse_php_with_path(source, "strict_missing.php");
+  ```
+
+#### Running Rules
+
+- **`run_rule<R>(rule: &R, parsed: &ParsedSource)`** - Run a rule on parsed PHP code
+  ```rust
+  let rule = MyNewRule::new();
+  let diagnostics = run_rule(&rule, &parsed);
+  ```
+
+- **`run_rule_with_context<R>(rule: &R, source: &str)`** - Run a rule with context that includes the parsed file
+  - Useful for rules that need to resolve symbols defined in the same file
+  ```rust
+  let diagnostics = run_rule_with_context(&rule, source);
+  ```
+
+#### Asserting Diagnostics
+
+- **`assert_no_diagnostics(diagnostics: &[Diagnostic])`** - Assert that no diagnostics were produced (happy path)
+  ```rust
+  let diagnostics = run_rule(&rule, &parsed);
+  assert_no_diagnostics(&diagnostics);
+  ```
+
+- **`assert_diagnostics(diagnostics: &[Diagnostic], expected_messages: &[&str])`** - Assert diagnostics match expected messages (case-insensitive substring match)
+  ```rust
+  assert_diagnostics(&diagnostics, &["inconsistent return type"]);
+  ```
+
+- **`assert_diagnostics_exact(diagnostics: &[Diagnostic], expected_lines: &[&str])`** - Assert exact match in the format used in `.expect` files
+  ```rust
+  assert_diagnostics_exact(&diagnostics, &[
+      "error: missing required argument 2 for takesTwo"
+  ]);
+  ```
+
+#### Testing Auto-Fixes
+
+- **`run_fix<R>(rule: &R, parsed: &ParsedSource)`** - Run a rule's fix function
+- **`run_fix_with_context<R>(rule: &R, source: &str)`** - Run fix with context
+- **`assert_fix<R>(rule: &R, parsed: &ParsedSource, input: &str, expected: &str)`** - Assert fix produces expected output
+- **`assert_fix_with_path<R>(rule: &R, input: &str, expected: &str, path: &str)`** - Assert fix with custom path
+- **`assert_fix_with_context<R>(rule: &R, input: &str, expected: &str)`** - Assert fix with context
+
+### What to Test
+
+#### Happy Paths (No Diagnostics)
+
+Test cases where your rule should **not** trigger:
+
+- Valid code that might be similar to problematic code
+- Edge cases that are actually acceptable
+- Code that should be ignored by your rule
+
+```rust
+#[test]
+fn test_valid_code() {
+    let source = r#"<?php
+    function test(): int {
+        return 42;
+    }
+    "#;
+
+    let parsed = parse_php(source);
+    let rule = MyNewRule::new();
+    let diagnostics = run_rule(&rule, &parsed);
+
+    assert_no_diagnostics(&diagnostics);
+}
 ```
-error: description of the issue at 3:1
-warning: another issue description at 7:5
+
+#### Unhappy Paths (Diagnostics Expected)
+
+Test cases where your rule **should** trigger:
+
+- The main problematic pattern your rule detects
+- Variations of the problem (different syntax, contexts)
+- Multiple issues in the same file
+- Edge cases that should trigger the rule
+
+```rust
+#[test]
+fn test_rule_triggered() {
+    let source = r#"<?php
+    /**
+     * @return string
+     */
+    function test(): int {
+        return 42;
+    }
+    "#;
+
+    let parsed = parse_php(source);
+    let rule = PhpDocReturnCheckRule::new();
+    let diagnostics = run_rule(&rule, &parsed);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert!(diagnostics[0].message.contains("@return type 'string' conflicts"));
+}
 ```
 
-The format is: `{severity}: {message} at {line}:{column}`
+#### Testing with Context
+
+If your rule needs to resolve symbols (functions, classes, etc.) defined in the same file, use `run_rule_with_context`:
+
+```rust
+#[test]
+fn test_with_context() {
+    let source = r#"<?php
+    function takesTwo(int $a, int $b): void {}
+    takesTwo(1);  // Missing second argument
+    "#;
+
+    let rule = MissingArgumentRule::new();
+    let diagnostics = run_rule_with_context(&rule, source);
+
+    assert_diagnostics_exact(&diagnostics, &[
+        "error: missing required argument 2 for takesTwo"
+    ]);
+}
+```
+
+### Complete Test Example
+
+Here's a complete example from `phpdoc_return_check.rs`:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::{parse_php, run_rule, assert_no_diagnostics};
+
+    #[test]
+    fn test_return_type_conflict() {
+        // Unhappy path: @return conflicts with native type
+        let source = r#"<?php
+        /**
+         * @return string
+         */
+        function test(): int {
+            return 42;
+        }
+        "#;
+
+        let parsed = parse_php(source);
+        let context = ProjectContext::new();
+        let rule = PhpDocReturnCheckRule::new();
+        let diagnostics = rule.run(&parsed, &context);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains(
+            "@return type 'string' conflicts with native return type hint 'int'"
+        ));
+    }
+
+    #[test]
+    fn test_return_type_matches() {
+        // Happy path: @return matches native type
+        let source = r#"<?php
+        /**
+         * @return int
+         */
+        function test(): int {
+            return 42;
+        }
+        "#;
+
+        let parsed = parse_php(source);
+        let context = ProjectContext::new();
+        let rule = PhpDocReturnCheckRule::new();
+        let diagnostics = rule.run(&parsed, &context);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+}
+```
 
 ### Run Tests
 
@@ -168,8 +364,11 @@ Test your rule implementation:
 # Run all tests
 cargo test
 
-# Run only the invalid suite tests
-cargo test invalid_fixtures_match_expectations
+# Run tests for a specific rule file
+cargo test --test lib phpdoc_return_check
+
+# Run a specific test
+cargo test test_return_type_conflict
 ```
 
 ## Step 5: Configuration Support
@@ -235,7 +434,35 @@ impl DiagnosticRule for MyNewRule {
 }
 ```
 
-Test auto-fixes by creating `.expect.fixed` files and running:
+Test auto-fixes using the test helpers:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::rules::test_utils::*;
+
+    #[test]
+    fn test_auto_fix() {
+        let input = r#"<?php
+        function test(): void {}
+        "#;
+
+        let expected = r#"<?php
+
+        declare(strict_types=1);
+
+        function test(): void {}
+        "#;
+
+        let rule = StrictTypesRule::new();
+        let parsed = parse_php_with_path(input, "strict_missing.php");
+        assert_fix(&rule, &parsed, input, expected);
+    }
+}
+```
+
+Alternatively, you can test auto-fixes by creating `.expect.fixed` files in the `tests/invalid/` directory and running:
 
 ```bash
 cargo run --bin php-checker -- analyse tests/invalid --fix --dry-run
@@ -245,17 +472,27 @@ cargo run --bin php-checker -- analyse tests/invalid --fix --dry-run
 
 Look at existing rules for implementation examples:
 
+- **`strict_typing/phpdoc_return_check.rs`** - PHPDoc validation with comprehensive in-file tests (happy and unhappy paths)
+- **`strict_typing/phpdoc_param_check.rs`** - Parameter type checking with tests
+- **`strict_typing/missing_argument.rs`** - Context-aware rule with `run_rule_with_context` tests
 - **`control_flow/fallthrough.rs`** - Simple visitor pattern
 - **`cleanup/unused_variable.rs`** - Complex analysis with auto-fix
 - **`sanity/undefined_variable.rs`** - Basic AST traversal
 
+Each of these rules includes a `#[cfg(test)]` module at the bottom showing how to test the rule using the `test_utils` helpers.
+
 ## Testing Tips
 
-1. **Start Simple** - Create minimal test cases first
-2. **Edge Cases** - Test with various PHP syntax variations
-3. **False Positives** - Ensure your rule doesn't trigger on valid code
-4. **Ignore Comments** - Rules automatically respect `php-checker-ignore` comments
-5. **Performance** - Keep visitor logic efficient for large codebases
+1. **Start Simple** - Create minimal test cases first, then add complexity
+2. **Test Both Paths** - Always test both happy paths (no diagnostics) and unhappy paths (diagnostics expected)
+3. **Use Helpers** - Leverage `test_utils` helpers instead of manually parsing and asserting
+4. **Edge Cases** - Test with various PHP syntax variations and edge cases
+5. **False Positives** - Ensure your rule doesn't trigger on valid code (happy path tests)
+6. **Multiple Issues** - Test scenarios with multiple issues in the same file
+7. **Context-Aware Rules** - Use `run_rule_with_context` for rules that need symbol resolution
+8. **Ignore Comments** - Rules automatically respect `php-checker-ignore` comments
+9. **Performance** - Keep visitor logic efficient for large codebases
+10. **Descriptive Names** - Use clear test function names like `test_rule_triggered` and `test_valid_code`
 
 ## Need Help?
 
