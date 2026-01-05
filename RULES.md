@@ -28,10 +28,6 @@ This document lists the next set of static-analysis rules we want to add so the 
 
 ## Control-flow / type narrowing
 
-- **Guard inference**
-  - Observe branch conditions (`is_string`, `instanceof`, `null` checks, etc.) and keep track of the narrowed type for the sibling block to flag incompatible usages later in the same function.
-  - Detect cases where the guard proves a variable is always `null` or `false`, and a subsequent branch assumes otherwise.
-
 - **Unreachable / redundant blocks**
   - Extend unreachable detection to whole branches, not just statements after `return`. If all `if`/`elseif` combinations are covered, warn about the redundant `else`.
   - Spot duplicated `case` labels or identical `if` conditions within the same scope and emit a warning.

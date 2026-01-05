@@ -16,8 +16,8 @@ pub mod test_utils;
 pub use api::{DeprecatedApiRule, InvalidThisRule};
 pub use cleanup::{UnusedUseRule, UnusedVariableRule};
 pub use control_flow::{
-    DuplicateSwitchCaseRule, FallthroughRule, ImpossibleComparisonRule, RedundantConditionRule,
-    UnreachableCodeRule, UnreachableStatementRule,
+    DuplicateSwitchCaseRule, FallthroughRule, GuardInferenceRule, ImpossibleComparisonRule,
+    RedundantConditionRule, UnreachableCodeRule, UnreachableStatementRule,
 };
 pub use sanity::{ArrayKeyNotDefinedRule, DuplicateDeclarationRule, UndefinedVariableRule};
 pub use security::{

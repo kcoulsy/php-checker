@@ -316,6 +316,7 @@ impl Analyzer {
             Arc::new(rules::DuplicateDeclarationRule::new()),
             Arc::new(rules::ImpossibleComparisonRule::new()),
             Arc::new(rules::RedundantConditionRule::new()),
+            Arc::new(rules::GuardInferenceRule::new()),
             Arc::new(rules::DuplicateSwitchCaseRule::new()),
             Arc::new(rules::FallthroughRule::new()),
             Arc::new(rules::UnreachableCodeRule::new()),
