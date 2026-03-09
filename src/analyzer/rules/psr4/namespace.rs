@@ -105,3 +105,64 @@ fn describe_namespace(namespace: Option<&str>) -> String {
         None => "no namespace".to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analyzer::config::{AnalyzerConfig, Psr4Config};
+    use crate::analyzer::project::ProjectContext;
+    use crate::analyzer::rules::test_utils::parse_php_with_path;
+
+    fn psr4_config() -> AnalyzerConfig {
+        AnalyzerConfig {
+            psr4: Psr4Config {
+                enabled: true,
+                namespace_root: None,
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_namespace_mismatch() {
+        let source = r#"<?php
+
+namespace App;
+
+final class NamespaceMismatch
+{
+}
+"#;
+        let mut context = ProjectContext::new();
+        // Root is "project", file is at "project/src/NamespaceMismatch.php" so
+        // stripping the root prefix leaves "src/NamespaceMismatch.php" and the
+        // expected namespace becomes "src", while the file declares "App".
+        context.insert(parse_php_with_path(source, "project/src/NamespaceMismatch.php"));
+
+        let config = psr4_config();
+        let diagnostics = run_namespace_checks(Path::new("project"), &context, &config);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains("namespace `App`"));
+        assert!(diagnostics[0].message.contains("does not match PSR-4 directory"));
+    }
+
+    #[test]
+    fn test_valid_namespace() {
+        let source = r#"<?php
+
+namespace src;
+
+class MyClass
+{
+}
+"#;
+        let mut context = ProjectContext::new();
+        context.insert(parse_php_with_path(source, "project/src/MyClass.php"));
+
+        let config = psr4_config();
+        let diagnostics = run_namespace_checks(Path::new("project"), &context, &config);
+
+        assert!(diagnostics.is_empty());
+    }
+}

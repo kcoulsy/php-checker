@@ -45,9 +45,6 @@ impl DiagnosticRule for PhpDocPropertyCheckRule {
 struct PhpDocPropertyVisitor<'a> {
     parsed: &'a parser::ParsedSource,
     diagnostics: Vec<crate::analyzer::Diagnostic>,
-    current_class_properties: HashMap<String, phpdoc::PropertyTag>,
-    has_get: bool,
-    has_set: bool,
     // Map of class name to whether it has __get/__set
     class_magic_methods: HashMap<String, (bool, bool)>, // (has_get, has_set)
 }
@@ -57,154 +54,133 @@ impl<'a> PhpDocPropertyVisitor<'a> {
         Self {
             parsed,
             diagnostics: Vec::new(),
-            current_class_properties: HashMap::new(),
-            has_get: false,
-            has_set: false,
             class_magic_methods: HashMap::new(),
         }
     }
 
-    fn collect_class_magic_methods(&mut self, node: Node<'a>) {
-        if node.kind() == "class_declaration" {
-            // Get class name
-            if let Some(name_node) = node.child_by_field_name("name") {
-                if let Some(class_name) = node_text(name_node, self.parsed) {
-                    // Check if class has __get/__set
-                    let mut has_get = false;
-                    let mut has_set = false;
+    fn collect_class_magic_methods(&mut self, root: Node<'a>) {
+        let source = self.parsed.source.as_bytes();
+        let mut cursor = root.walk();
+        'outer: loop {
+            let node = cursor.node();
+            if node.kind() == "class_declaration" {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    if let Some(class_name) = node_text(name_node, self.parsed) {
+                        let mut has_get = false;
+                        let mut has_set = false;
 
-                    // Note: The field name is "body" even though the node kind is "declaration_list"
-                    if let Some(body) = node.child_by_field_name("body") {
-                        for i in 0..body.named_child_count() {
-                            if let Some(child) = body.named_child(i) {
-                                if child.kind() == "method_declaration" {
-                                    if let Some(method_name_node) = child.child_by_field_name("name") {
-                                        if let Some(method_name) = node_text(method_name_node, self.parsed) {
-                                            if method_name == "__get" {
-                                                has_get = true;
-                                            } else if method_name == "__set" {
-                                                has_set = true;
+                        if let Some(body) = node.child_by_field_name("body") {
+                            for i in 0..body.named_child_count() {
+                                if let Some(child) = body.named_child(i) {
+                                    if child.kind() == "method_declaration" {
+                                        if let Some(name_node) = child.child_by_field_name("name") {
+                                            if let Ok(method_name) = name_node.utf8_text(source) {
+                                                match method_name.trim() {
+                                                    "__get" => { has_get = true; }
+                                                    "__set" => { has_set = true; }
+                                                    _ => {}
+                                                }
+                                                if has_get && has_set {
+                                                    break;
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    self.class_magic_methods.insert(class_name, (has_get, has_set));
+                        self.class_magic_methods.insert(class_name, (has_get, has_set));
+                    }
+                }
+                // PHP has no nested classes — skip descending into class body
+                loop {
+                    if cursor.goto_next_sibling() { continue 'outer; }
+                    if !cursor.goto_parent() { break 'outer; }
                 }
             }
-        }
-
-        // Recursively visit children
-        let mut cursor = node.walk();
-        if cursor.goto_first_child() {
+            if cursor.goto_first_child() { continue; }
             loop {
-                self.collect_class_magic_methods(cursor.node());
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
+                if cursor.goto_next_sibling() { break; }
+                if !cursor.goto_parent() { break 'outer; }
             }
         }
     }
 
-    fn visit(&mut self, node: Node<'a>) {
-        match node.kind() {
-            "class_declaration" => {
+    fn visit(&mut self, root: Node<'a>) {
+        let mut cursor = root.walk();
+        'outer: loop {
+            let node = cursor.node();
+            if node.kind() == "class_declaration" {
                 self.check_class_properties(node);
-            }
-            _ => {}
-        }
-
-        // Recursively visit children
-        let mut cursor = node.walk();
-        if cursor.goto_first_child() {
-            loop {
-                self.visit(cursor.node());
-                if !cursor.goto_next_sibling() {
-                    break;
+                // PHP has no nested classes — skip descending into class body
+                loop {
+                    if cursor.goto_next_sibling() { continue 'outer; }
+                    if !cursor.goto_parent() { break 'outer; }
                 }
+            }
+            if cursor.goto_first_child() { continue; }
+            loop {
+                if cursor.goto_next_sibling() { break; }
+                if !cursor.goto_parent() { break 'outer; }
             }
         }
     }
 
     fn check_class_properties(&mut self, node: Node<'a>) {
-        // Get the PHPDoc comment for this class
         let phpdoc = self.get_phpdoc_for_node(node);
-        if phpdoc.is_none() {
-            return;
-        }
-        let phpdoc = phpdoc.unwrap();
+        if let Some(phpdoc) = phpdoc {
+            if phpdoc.properties.is_empty() {
+                return;
+            }
 
-        // If no @property tags, nothing to check
-        if phpdoc.properties.is_empty() {
-            return;
-        }
+            // Use the cache from pass 1 instead of re-walking the body
+            let (mut has_get, mut has_set) = node
+                .child_by_field_name("name")
+                .and_then(|n| node_text(n, self.parsed))
+                .and_then(|name| self.class_magic_methods.get(&name).copied())
+                .unwrap_or((false, false));
 
-        // Store properties for this class
-        self.current_class_properties.clear();
-        for property in &phpdoc.properties {
-            self.current_class_properties.insert(property.name.clone(), property.clone());
-        }
-
-        // Check if __get and __set methods exist (in this class or parent)
-        self.has_get = false;
-        self.has_set = false;
-
-        // Check this class first
-        // Note: The field name is "body" even though the node kind is "declaration_list"
-        if let Some(body) = node.child_by_field_name("body") {
-            self.check_magic_methods(body);
-        }
-
-        // If not found, check parent class
-        // Note: base_clause is a child node but doesn't have a field name, so we search by kind
-        if !self.has_get || !self.has_set {
-            // Search for base_clause among children
-            let mut base_clause = None;
-            for i in 0..node.named_child_count() {
-                if let Some(child) = node.named_child(i) {
-                    if child.kind() == "base_clause" {
-                        base_clause = Some(child);
-                        break;
+            // If not found, check parent class
+            if !has_get || !has_set {
+                for i in 0..node.named_child_count() {
+                    if let Some(child) = node.named_child(i) {
+                        if child.kind() == "base_clause" {
+                            if let Some(parent_name) = self.get_parent_class_name(child) {
+                                if let Some(&(pg, ps)) = self.class_magic_methods.get(&parent_name) {
+                                    has_get |= pg;
+                                    has_set |= ps;
+                                }
+                            }
+                            break;
+                        }
                     }
                 }
             }
 
-            if let Some(base_clause) = base_clause {
-                if let Some(parent_name) = self.get_parent_class_name(base_clause) {
-                    if let Some((parent_has_get, parent_has_set)) = self.class_magic_methods.get(&parent_name) {
-                        self.has_get = self.has_get || *parent_has_get;
-                        self.has_set = self.has_set || *parent_has_set;
-                    }
+            // Warn if properties are documented but magic methods are missing
+            for property in &phpdoc.properties {
+                if !property.writeonly && !has_get {
+                    self.diagnostics.push(diagnostic_for_node(
+                        self.parsed,
+                        node,
+                        Severity::Warning,
+                        format!("@property '{}' documented but __get() method is missing", property.name),
+                    ));
                 }
-            }
-        }
-
-        // Warn if properties are documented but magic methods are missing
-        for property in &phpdoc.properties {
-            if !property.writeonly && !self.has_get {
-                self.diagnostics.push(diagnostic_for_node(
-                    self.parsed,
-                    node,
-                    Severity::Warning,
-                    format!("@property '{}' documented but __get() method is missing", property.name),
-                ));
-            }
-            if !property.readonly && !self.has_set {
-                self.diagnostics.push(diagnostic_for_node(
-                    self.parsed,
-                    node,
-                    Severity::Warning,
-                    format!("@property '{}' documented but __set() method is missing", property.name),
-                ));
+                if !property.readonly && !has_set {
+                    self.diagnostics.push(diagnostic_for_node(
+                        self.parsed,
+                        node,
+                        Severity::Warning,
+                        format!("@property '{}' documented but __set() method is missing", property.name),
+                    ));
+                }
             }
         }
     }
 
     fn get_parent_class_name(&self, base_clause: Node<'a>) -> Option<String> {
-        // base_clause usually contains a qualified_name or name
         let mut cursor = base_clause.walk();
         if cursor.goto_first_child() {
             loop {
@@ -220,34 +196,11 @@ impl<'a> PhpDocPropertyVisitor<'a> {
         None
     }
 
-    fn check_magic_methods(&mut self, body: Node<'a>) {
-        // Iterate through named children of the body (declaration_list node)
-        // This skips tokens like {, } and only processes named nodes
-        for i in 0..body.named_child_count() {
-            if let Some(node) = body.named_child(i) {
-                if node.kind() == "method_declaration" {
-                    if let Some(name_node) = node.child_by_field_name("name") {
-                        if let Some(method_name) = node_text(name_node, self.parsed) {
-                            if method_name == "__get" {
-                                self.has_get = true;
-                            } else if method_name == "__set" {
-                                self.has_set = true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     fn get_phpdoc_for_node(&self, node: Node<'a>) -> Option<phpdoc::PhpDocComment> {
-        // Look for a comment node immediately before this node
-        let cursor = node.walk();
-        if let Some(prev_sibling) = cursor.node().prev_sibling() {
-            if prev_sibling.kind() == "comment" {
-                let comment_text = node_text(prev_sibling, self.parsed)?;
-                return phpdoc::PhpDocParser::parse(&comment_text);
-            }
+        let prev_sibling = node.prev_sibling()?;
+        if prev_sibling.kind() == "comment" {
+            let comment_text = node_text(prev_sibling, self.parsed)?;
+            return phpdoc::PhpDocParser::parse(&comment_text);
         }
         None
     }
@@ -269,7 +222,7 @@ class User {
     public function __get($name) {
         return $this->data[$name] ?? null;
     }
-    
+
     public function __set($name, $value) {
         $this->data[$name] = $value;
     }
@@ -299,7 +252,7 @@ class User {
     public function __get($name) {
         return $this->data[$name] ?? null;
     }
-    
+
     public function __set($name, $value) {
         $this->data[$name] = $value;
     }
@@ -326,7 +279,7 @@ $user->name = 123;  // Error: @property type 'string' conflicts with assigned va
  */
 class Entity {
     private $id = "123";
-    
+
     public function __get($name) {
         if ($name === 'id') {
             return $this->id;
@@ -409,11 +362,11 @@ class User {
  */
 class User {
     private $id = "123";
-    
+
     public function __get($name) {
         return $this->data[$name] ?? null;
     }
-    
+
     public function __set($name, $value) {
         $this->data[$name] = $value;
     }
@@ -444,7 +397,7 @@ class User {
     public function __get($name) {
         return $this->data[$name] ?? null;
     }
-    
+
     public function __set($name, $value) {
         $this->data[$name] = $value;
     }
@@ -474,7 +427,7 @@ class Article {
     public function __get($name) {
         return $this->data[$name] ?? [];
     }
-    
+
     public function __set($name, $value) {
         $this->data[$name] = $value;
     }
@@ -508,7 +461,7 @@ class User {
     public function __get($name) {
         return $this->data[$name] ?? null;
     }
-    
+
     public function __set($name, $value) {
         $this->data[$name] = $value;
     }
@@ -538,7 +491,7 @@ class Base {
     public function __get($name) {
         return $this->data[$name] ?? null;
     }
-    
+
     public function __set($name, $value) {
         $this->data[$name] = $value;
     }
@@ -574,7 +527,7 @@ class Base {
     public function __get($name) {
         return $this->data[$name] ?? null;
     }
-    
+
     public function __set($name, $value) {
         $this->data[$name] = $value;
     }

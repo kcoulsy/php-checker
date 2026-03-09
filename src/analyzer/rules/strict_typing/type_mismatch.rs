@@ -142,4 +142,35 @@ takesString('hello');
 
         assert_no_diagnostics(&diagnostics);
     }
+
+    #[test]
+    fn test_constructor_property_promotion_valid() {
+        let source = r#"<?php
+
+class Config
+{
+    public function __construct(
+        private string $host,
+        private int $port,
+        private bool $tls = false,
+    ) {
+    }
+
+    public function dsn(): string
+    {
+        $scheme = $this->tls ? 'https' : 'http';
+        return sprintf('%s://%s:%d', $scheme, $this->host, $this->port);
+    }
+}
+
+$config = new Config('localhost', 8080, true);
+echo $config->dsn();
+"#;
+
+        let parsed = parse_php(source);
+        let rule = TypeMismatchRule::new();
+        let diagnostics = run_rule(&rule, &parsed);
+
+        assert_no_diagnostics(&diagnostics);
+    }
 }

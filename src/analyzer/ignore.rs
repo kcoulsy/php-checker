@@ -167,4 +167,23 @@ mod tests {
         assert!(state.should_ignore("cleanup/unused_use"));
         assert!(!state.should_ignore("strict_typing/missing_argument"));
     }
+
+    #[test]
+    fn ignores_specific_rule_without_affecting_siblings() {
+        let source = "// php-checker-ignore: cleanup/unused_use\n";
+        let state = IgnoreState::from_source(source);
+        assert!(!state.ignores_everything());
+        assert!(state.should_ignore("cleanup/unused_use"));
+        assert!(!state.should_ignore("cleanup/unused_variable"));
+        assert!(!state.should_ignore("strict_typing/missing_argument"));
+    }
+
+    #[test]
+    fn ignores_with_hash_comment_prefix() {
+        let source = "# php-checker-ignore: cleanup\n";
+        let state = IgnoreState::from_source(source);
+        assert!(!state.ignores_everything());
+        assert!(state.should_ignore("cleanup/unused_use"));
+        assert!(!state.should_ignore("strict_typing/missing_argument"));
+    }
 }

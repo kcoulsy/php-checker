@@ -76,7 +76,8 @@ impl DiagnosticRule for MissingArgumentRule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php, run_rule_with_context};
+    use crate::analyzer::project::ProjectContext;
+    use crate::analyzer::rules::test_utils::{assert_diagnostics_exact, assert_no_diagnostics, parse_php_with_path, run_rule_with_context};
 
     #[test]
     fn test_missing_argument_file() {
@@ -121,5 +122,59 @@ takesNone();
         let diagnostics = run_rule_with_context(&rule, source);
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_variadic_function_valid() {
+        let source = r#"<?php
+
+function sum(int ...$values): int
+{
+    return array_reduce(
+        $values,
+        fn(?int $carry, int $next): int => ($carry ?? 0) + $next,
+        0
+    );
+}
+
+$total = sum(1, 2, 3, 4);
+echo "sum: $total\n";
+"#;
+
+        let rule = MissingArgumentRule::new();
+        let diagnostics = run_rule_with_context(&rule, source);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_multi_namespace_missing_arg() {
+        let services_source = r#"<?php
+
+namespace Multi\Service;
+
+function takesTwo(int $a, int $b): void
+{
+}
+"#;
+        let client_source = r#"<?php
+
+namespace Multi\Client;
+
+use Multi\Service as Svc;
+
+Svc\takesTwo(1);
+"#;
+
+        let rule = MissingArgumentRule::new();
+        let services = parse_php_with_path(services_source, "services.php");
+        let client_for_context = parse_php_with_path(client_source, "client.php");
+        let client_for_rule = parse_php_with_path(client_source, "client.php");
+        let mut context = ProjectContext::new();
+        context.insert(services);
+        context.insert(client_for_context);
+        let diagnostics = rule.run(&client_for_rule, &context);
+
+        assert_diagnostics_exact(&diagnostics, &["error: missing required argument 2 for Svc\\takesTwo"]);
     }
 }

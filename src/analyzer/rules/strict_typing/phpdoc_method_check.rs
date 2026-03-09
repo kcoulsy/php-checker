@@ -46,9 +46,6 @@ impl DiagnosticRule for PhpDocMethodCheckRule {
 struct PhpDocMethodVisitor<'a> {
     parsed: &'a parser::ParsedSource,
     diagnostics: Vec<crate::analyzer::Diagnostic>,
-    current_class_methods: HashMap<String, phpdoc::MethodTag>,
-    has_call: bool,
-    has_call_static: bool,
     // Map of class name to whether it has __call/__callStatic
     class_magic_methods: HashMap<String, (bool, bool)>, // (has_call, has_call_static)
 }
@@ -58,172 +55,132 @@ impl<'a> PhpDocMethodVisitor<'a> {
         Self {
             parsed,
             diagnostics: Vec::new(),
-            current_class_methods: HashMap::new(),
-            has_call: false,
-            has_call_static: false,
             class_magic_methods: HashMap::new(),
         }
     }
 
-    fn collect_class_magic_methods(&mut self, node: Node<'a>) {
-        if node.kind() == "class_declaration" {
-            // Get class name
-            if let Some(name_node) = node.child_by_field_name("name") {
-                if let Some(class_name) = node_text(name_node, self.parsed) {
-                    // Check if class has __call/__callStatic
-                    let mut has_call = false;
-                    let mut has_call_static = false;
+    fn collect_class_magic_methods(&mut self, root: Node<'a>) {
+        let source = self.parsed.source.as_bytes();
+        let mut cursor = root.walk();
+        'outer: loop {
+            let node = cursor.node();
+            if node.kind() == "class_declaration" {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    if let Some(class_name) = node_text(name_node, self.parsed) {
+                        let mut has_call = false;
+                        let mut has_call_static = false;
 
-                    // Note: The field name is "body" even though the node kind is "declaration_list"
-                    if let Some(body) = node.child_by_field_name("body") {
-                        for i in 0..body.named_child_count() {
-                            if let Some(child) = body.named_child(i) {
-                                if child.kind() == "method_declaration" {
-                                    if let Some(method_name_node) = child.child_by_field_name("name") {
-                                        if let Some(method_name) = node_text(method_name_node, self.parsed) {
-                                            if method_name == "__call" {
-                                                has_call = true;
-                                            } else if method_name == "__callStatic" {
-                                                has_call_static = true;
+                        if let Some(body) = node.child_by_field_name("body") {
+                            for i in 0..body.named_child_count() {
+                                if let Some(child) = body.named_child(i) {
+                                    if child.kind() == "method_declaration" {
+                                        if let Some(name_node) = child.child_by_field_name("name") {
+                                            if let Ok(method_name) = name_node.utf8_text(source) {
+                                                match method_name.trim() {
+                                                    "__call" => { has_call = true; }
+                                                    "__callStatic" => { has_call_static = true; }
+                                                    _ => {}
+                                                }
+                                                if has_call && has_call_static {
+                                                    break;
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    self.class_magic_methods.insert(class_name, (has_call, has_call_static));
+                        self.class_magic_methods.insert(class_name, (has_call, has_call_static));
+                    }
+                }
+                // PHP has no nested classes — skip descending into class body
+                loop {
+                    if cursor.goto_next_sibling() { continue 'outer; }
+                    if !cursor.goto_parent() { break 'outer; }
                 }
             }
-        }
-
-        // Recursively visit children
-        let mut cursor = node.walk();
-        if cursor.goto_first_child() {
+            if cursor.goto_first_child() { continue; }
             loop {
-                self.collect_class_magic_methods(cursor.node());
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
+                if cursor.goto_next_sibling() { break; }
+                if !cursor.goto_parent() { break 'outer; }
             }
         }
     }
 
-    fn visit(&mut self, node: Node<'a>) {
-        match node.kind() {
-            "class_declaration" => {
+    fn visit(&mut self, root: Node<'a>) {
+        let mut cursor = root.walk();
+        'outer: loop {
+            let node = cursor.node();
+            if node.kind() == "class_declaration" {
                 self.check_class_methods(node);
-            }
-            _ => {}
-        }
-
-        // Recursively visit children
-        let mut cursor = node.walk();
-        if cursor.goto_first_child() {
-            loop {
-                self.visit(cursor.node());
-                if !cursor.goto_next_sibling() {
-                    break;
+                // PHP has no nested classes — skip descending into class body
+                loop {
+                    if cursor.goto_next_sibling() { continue 'outer; }
+                    if !cursor.goto_parent() { break 'outer; }
                 }
+            }
+            if cursor.goto_first_child() { continue; }
+            loop {
+                if cursor.goto_next_sibling() { break; }
+                if !cursor.goto_parent() { break 'outer; }
             }
         }
     }
 
     fn check_class_methods(&mut self, node: Node<'a>) {
-        // Get the PHPDoc comment for this class
         let phpdoc = self.get_phpdoc_for_node(node);
-        if phpdoc.is_none() {
-            return;
-        }
-        let phpdoc = phpdoc.unwrap();
-
-        // If no @method tags, nothing to check
-        if phpdoc.methods.is_empty() {
-            return;
-        }
-
-        // Store methods for this class
-        self.current_class_methods.clear();
-        for method in &phpdoc.methods {
-            self.current_class_methods.insert(method.name.clone(), method.clone());
-        }
-
-        // Check if __call and __callStatic methods exist
-        self.has_call = false;
-        self.has_call_static = false;
-
-        // Find the class body
-        if let Some(body) = node.child_by_field_name("body") {
-            self.check_magic_methods(body);
-        }
-
-        // If not found, check parent class
-        // Note: base_clause is a child node but doesn't have a field name, so we search by kind
-        if !self.has_call || !self.has_call_static {
-            // Search for base_clause among children
-            let mut base_clause = None;
-            for i in 0..node.named_child_count() {
-                if let Some(child) = node.named_child(i) {
-                    if child.kind() == "base_clause" {
-                        base_clause = Some(child);
-                        break;
-                    }
-                }
+        if let Some(phpdoc) = phpdoc {
+            if phpdoc.methods.is_empty() {
+                return;
             }
 
-            if let Some(base_clause) = base_clause {
-                if let Some(parent_name) = self.get_parent_class_name(base_clause) {
-                    if let Some((parent_has_call, parent_has_call_static)) = self.class_magic_methods.get(&parent_name) {
-                        self.has_call = self.has_call || *parent_has_call;
-                        self.has_call_static = self.has_call_static || *parent_has_call_static;
-                    }
-                }
-            }
-        }
+            // Use the cache from pass 1 instead of re-walking the body
+            let (mut has_call, mut has_call_static) = node
+                .child_by_field_name("name")
+                .and_then(|n| node_text(n, self.parsed))
+                .and_then(|name| self.class_magic_methods.get(&name).copied())
+                .unwrap_or((false, false));
 
-        // Warn if methods are documented but magic methods are missing
-        for method in &phpdoc.methods {
-            if method.is_static && !self.has_call_static {
-                self.diagnostics.push(diagnostic_for_node(
-                    self.parsed,
-                    node,
-                    Severity::Warning,
-                    format!("@method '{}' is static but __callStatic() method is missing", method.name),
-                ));
-            } else if !method.is_static && !self.has_call {
-                self.diagnostics.push(diagnostic_for_node(
-                    self.parsed,
-                    node,
-                    Severity::Warning,
-                    format!("@method '{}' documented but __call() method is missing", method.name),
-                ));
-            }
-        }
-    }
-
-    fn check_magic_methods(&mut self, body: Node<'a>) {
-        // Iterate through all children of the declaration_list
-        // This includes both tokens ({, }) and named nodes (method_declaration, property_declaration, etc.)
-        for i in 0..body.named_child_count() {
-            if let Some(node) = body.named_child(i) {
-                if node.kind() == "method_declaration" {
-                    if let Some(name_node) = node.child_by_field_name("name") {
-                        if let Some(method_name) = node_text(name_node, self.parsed) {
-                            if method_name == "__call" {
-                                self.has_call = true;
-                            } else if method_name == "__callStatic" {
-                                self.has_call_static = true;
+            // If not found, check parent class
+            if !has_call || !has_call_static {
+                for i in 0..node.named_child_count() {
+                    if let Some(child) = node.named_child(i) {
+                        if child.kind() == "base_clause" {
+                            if let Some(parent_name) = self.get_parent_class_name(child) {
+                                if let Some(&(pc, pcs)) = self.class_magic_methods.get(&parent_name) {
+                                    has_call |= pc;
+                                    has_call_static |= pcs;
+                                }
                             }
+                            break;
                         }
                     }
+                }
+            }
+
+            // Warn if methods are documented but magic methods are missing
+            for method in &phpdoc.methods {
+                if method.is_static && !has_call_static {
+                    self.diagnostics.push(diagnostic_for_node(
+                        self.parsed,
+                        node,
+                        Severity::Warning,
+                        format!("@method '{}' is static but __callStatic() method is missing", method.name),
+                    ));
+                } else if !method.is_static && !has_call {
+                    self.diagnostics.push(diagnostic_for_node(
+                        self.parsed,
+                        node,
+                        Severity::Warning,
+                        format!("@method '{}' documented but __call() method is missing", method.name),
+                    ));
                 }
             }
         }
     }
 
     fn get_parent_class_name(&self, base_clause: Node<'a>) -> Option<String> {
-        // base_clause usually contains a qualified_name or name
         let mut cursor = base_clause.walk();
         if cursor.goto_first_child() {
             loop {
@@ -240,13 +197,10 @@ impl<'a> PhpDocMethodVisitor<'a> {
     }
 
     fn get_phpdoc_for_node(&self, node: Node<'a>) -> Option<phpdoc::PhpDocComment> {
-        // Look for a comment node immediately before this node
-        let cursor = node.walk();
-        if let Some(prev_sibling) = cursor.node().prev_sibling() {
-            if prev_sibling.kind() == "comment" {
-                let comment_text = node_text(prev_sibling, self.parsed)?;
-                return phpdoc::PhpDocParser::parse(&comment_text);
-            }
+        let prev_sibling = node.prev_sibling()?;
+        if prev_sibling.kind() == "comment" {
+            let comment_text = node_text(prev_sibling, self.parsed)?;
+            return phpdoc::PhpDocParser::parse(&comment_text);
         }
         None
     }
