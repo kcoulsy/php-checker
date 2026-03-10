@@ -14,21 +14,23 @@ pub mod strict_typing;
 pub mod test_utils;
 
 pub use api::{DeprecatedApiRule, InvalidThisRule};
-pub use cleanup::{UnusedUseRule, UnusedVariableRule};
+pub use cleanup::{MethodChainLengthRule, NestedLoopDepthRule, UnusedUseRule, UnusedVariableRule};
 pub use control_flow::{
-    DuplicateSwitchCaseRule, FallthroughRule, ImpossibleComparisonRule, RedundantConditionRule,
-    UnreachableCodeRule, UnreachableStatementRule,
+    DuplicateSwitchCaseRule, FallthroughRule, GuardInferenceRule, ImpossibleComparisonRule,
+    RedundantConditionRule, UnreachableCodeRule, UnreachableStatementRule,
 };
-pub use sanity::{ArrayKeyNotDefinedRule, DuplicateDeclarationRule, UndefinedVariableRule};
+pub use sanity::{
+    ArrayKeyNotDefinedRule, DuplicateDeclarationRule, UndefinedFunctionRule, UndefinedVariableRule,
+};
 pub use security::{
     HardCodedCredentialsRule, HardCodedKeysRule, IncludeUserInputRule, MutatingLiteralRule,
     WeakHashingRule,
 };
 pub use strict_typing::{
-    ConsistentReturnRule, ForceReturnTypeRule, MissingArgumentRule, MissingReturnRule,
-    PhpDocMethodCheckRule, PhpDocParamCheckRule, PhpDocPropertyCheckRule, PhpDocReturnCheckRule,
-    PhpDocReturnValueCheckRule, PhpDocThrowsCheckRule, PhpDocVarCheckRule, StrictTypesRule,
-    TypeMismatchRule,
+    ArithmeticTypeRule, ConsistentReturnRule, ForceReturnTypeRule, MissingArgumentRule,
+    MissingReturnRule, NullArgumentRule, PhpDocMethodCheckRule, PhpDocParamCheckRule,
+    PhpDocPropertyCheckRule, PhpDocReturnCheckRule, PhpDocReturnValueCheckRule,
+    PhpDocThrowsCheckRule, PhpDocVarCheckRule, StrictTypesRule, TypeMismatchRule, VoidReturnRule,
 };
 
 pub trait DiagnosticRule: Send + Sync {

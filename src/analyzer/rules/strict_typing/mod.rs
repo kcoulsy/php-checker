@@ -1,9 +1,11 @@
 pub use crate::analyzer::rules::{DiagnosticRule, helpers};
 
+pub mod arithmetic_type;
 pub mod consistent_return;
 pub mod force_return_type;
 pub mod missing_argument;
 pub mod missing_return;
+pub mod null_argument;
 pub mod phpdoc_method_check;
 pub mod phpdoc_param_check;
 pub mod phpdoc_property_check;
@@ -13,11 +15,14 @@ pub mod phpdoc_throws_check;
 pub mod phpdoc_var_check;
 pub mod strict_types;
 pub mod type_mismatch;
+pub mod void_return;
 
+pub use arithmetic_type::ArithmeticTypeRule;
 pub use consistent_return::ConsistentReturnRule;
 pub use force_return_type::ForceReturnTypeRule;
 pub use missing_argument::MissingArgumentRule;
 pub use missing_return::MissingReturnRule;
+pub use null_argument::NullArgumentRule;
 pub use phpdoc_method_check::PhpDocMethodCheckRule;
 pub use phpdoc_param_check::PhpDocParamCheckRule;
 pub use phpdoc_property_check::PhpDocPropertyCheckRule;
@@ -27,3 +32,4 @@ pub use phpdoc_throws_check::PhpDocThrowsCheckRule;
 pub use phpdoc_var_check::PhpDocVarCheckRule;
 pub use strict_types::StrictTypesRule;
 pub use type_mismatch::TypeMismatchRule;
+pub use void_return::VoidReturnRule;

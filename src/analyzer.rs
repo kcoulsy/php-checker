@@ -337,6 +337,13 @@ impl Analyzer {
             Arc::new(rules::PhpDocThrowsCheckRule::new()),
             Arc::new(rules::PhpDocPropertyCheckRule::new()),
             Arc::new(rules::PhpDocMethodCheckRule::new()),
+            Arc::new(rules::VoidReturnRule::new()),
+            Arc::new(rules::NullArgumentRule::new()),
+            Arc::new(rules::ArithmeticTypeRule::new()),
+            Arc::new(rules::UndefinedFunctionRule::new()),
+            Arc::new(rules::MethodChainLengthRule::new()),
+            Arc::new(rules::NestedLoopDepthRule::new()),
+            Arc::new(rules::GuardInferenceRule::new()),
         ];
 
         let config = config.unwrap_or_default();
